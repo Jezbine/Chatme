@@ -200,19 +200,10 @@ class StatusService extends GetxService {
       final isVideo = ['mp4', 'mov', 'avi', 'mkv', 'webm'].contains(ext);
       final mime = isVideo ? 'video/$ext' : (ext == 'png' ? 'image/png' : 'image/jpeg');
       final fileName = '${DateTime.now().millisecondsSinceEpoch}.$ext';
-      final storagePath = 'statuses/$uid/$fileName';
-      // Essayer bucket status-media puis chat-media
-      String bucket = 'status-media';
-      try {
-        await client.storage.from(bucket).uploadBinary(storagePath, bytes, fileOptions: FileOptions(contentType: mime, upsert: true));
-      } catch (e) {
-        if (e.toString().contains('Bucket not found')) {
-          bucket = 'chat-media';
-          await client.storage.from(bucket).uploadBinary(storagePath, bytes, fileOptions: FileOptions(contentType: mime, upsert: true));
-        } else {
-          rethrow;
-        }
-      }
+      final storagePath = '$uid/status_$fileName';
+      // Utiliser le bucket chat-media qui existe déja avec ses policies RLS
+      final bucket = 'chat-media';
+      await client.storage.from(bucket).uploadBinary(storagePath, bytes, fileOptions: FileOptions(contentType: mime, upsert: true));
       // URL publique si possible, sinon signée 30 jours
       try {
         return client.storage.from(bucket).getPublicUrl(storagePath);

@@ -955,21 +955,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return DateFormat('d MMM', 'fr').format(lastSeen);
   }
 
-  double _msgFontSize() {
-    try {
-      final s = Get.isRegistered<SettingsService>() ? Get.find<SettingsService>().fontSize.value : 'medium';
-      switch (s) {
-        case 'small':
-          return 13;
-        case 'large':
-          return 17;
-        default:
-          return 15;
-      }
-    } catch (_) {
-      return 15;
-    }
-  }
+  double _msgFontSize() => 15;
 
   String _formatFileSize(int bytes) => FormatUtils.formatFileSize(bytes);
 }

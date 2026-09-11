@@ -124,18 +124,10 @@ class MomentsService extends GetxService {
       final ext = localPath.split('.').last.toLowerCase();
       final mime = ext == 'png' ? 'image/png' : ext == 'mp4' ? 'video/mp4' : 'image/jpeg';
       final fileName = '${DateTime.now().millisecondsSinceEpoch}.$ext';
-      final storagePath = 'moments/$uid/$fileName';
-      String bucket = 'moments-media';
-      try {
-        await client.storage.from(bucket).uploadBinary(storagePath, bytes, fileOptions: FileOptions(contentType: mime, upsert: true));
-      } catch (e) {
-        if (e.toString().contains('Bucket not found')) {
-          bucket = 'chat-media';
-          await client.storage.from(bucket).uploadBinary(storagePath, bytes, fileOptions: FileOptions(contentType: mime, upsert: true));
-        } else {
-          rethrow;
-        }
-      }
+      final storagePath = '$uid/moment_$fileName';
+      // Utiliser le bucket chat-media qui existe déja avec ses policies RLS
+      final bucket = 'chat-media';
+      await client.storage.from(bucket).uploadBinary(storagePath, bytes, fileOptions: FileOptions(contentType: mime, upsert: true));
       try {
         return client.storage.from(bucket).getPublicUrl(storagePath);
       } catch (_) {

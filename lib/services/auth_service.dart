@@ -623,7 +623,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
     }
   }
 
-  /// Upload photo de profil -> Supabase Storage (avatars) + update profiles.avatar_url
+  /// Upload photo de profil -> Supabase Storage (chat-media) + update profiles.avatar_url
   Future<bool> updateAvatar(String localPath) async {
     final uid = _client.auth.currentUser?.id;
     if (uid == null || currentUser.value == null) return false;
@@ -638,21 +638,12 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       final bytes = await file.readAsBytes();
       final ext = localPath.split('.').last.toLowerCase();
       final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
-      final fileName = 'avatar_${DateTime.now().millisecondsSinceEpoch}.$ext';
-      final storagePath = 'avatars/$uid/$fileName';
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final storagePath = '$uid/avatar_$fileName';
 
-      // Bucket avatars (public) — fallback sur chat-media si avatars n'existe pas
-      String bucket = 'avatars';
-      try {
-        await _client.storage.from(bucket).uploadBinary(storagePath, bytes, fileOptions: FileOptions(contentType: mime, upsert: true));
-      } catch (e) {
-        if (e.toString().contains('Bucket not found')) {
-          bucket = 'chat-media';
-          await _client.storage.from(bucket).uploadBinary(storagePath, bytes, fileOptions: FileOptions(contentType: mime, upsert: true));
-        } else {
-          rethrow;
-        }
-      }
+      // Utiliser le bucket chat-media qui existe déja avec ses policies RLS
+      final bucket = 'chat-media';
+      await _client.storage.from(bucket).uploadBinary(storagePath, bytes, fileOptions: FileOptions(contentType: mime, upsert: true));
       String url;
       try {
         url = _client.storage.from(bucket).getPublicUrl(storagePath);

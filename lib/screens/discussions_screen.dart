@@ -231,11 +231,11 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
     );
     // Calcul du nombre de non-lus (WhatsApp-like)
     final unreadCount = (() {
-      final cached = messaging.messagesByConversation[conv.id];
+      final ms = Get.find<MessagingService>();
+      final cached = ms.messagesByConversation[conv.id];
       if (cached != null && cached.isNotEmpty) {
         return cached.where((m) => m.senderId != currentUserId && m.status != MessageStatus.read).length;
       }
-      // Fallback sur lastMessage si messages pas encore chargés
       if (conv.lastMessage != null && conv.lastMessage!.senderId != currentUserId && conv.lastMessage!.status != MessageStatus.read) return 1;
       return 0;
     })();
