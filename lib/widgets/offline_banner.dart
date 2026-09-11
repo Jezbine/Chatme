@@ -52,12 +52,12 @@ class OfflineBanner extends StatelessWidget {
                       if (displayPending > 0)
                         Text(
                           '$displayPending message${displayPending > 1 ? 's' : ''} en attente d\'envoi',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.92), fontSize: 11),
+                          style: TextStyle(color: Colors.white.withOpacity(0.92), fontSize: 11),
                         )
                       else
                         Text(
                           'Vos conversations en cache restent disponibles',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.92), fontSize: 11),
+                          style: TextStyle(color: Colors.white.withOpacity(0.92), fontSize: 11),
                         ),
                     ],
                   ),
@@ -101,7 +101,7 @@ class OfflineBannerCompact extends StatelessWidget {
       if (!conn.isOffline.value) return const SizedBox.shrink();
       return Container(
         width: double.infinity,
-        color: Theme.of(context).colorScheme.error.withValues(alpha: 0.95),
+        color: Theme.of(context).colorScheme.error.withOpacity(0.95),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: const Row(
           mainAxisAlignment: MainAxisAlignment.center,

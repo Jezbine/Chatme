@@ -121,19 +121,7 @@ class WalletScreen extends StatelessWidget {
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 elevation: 0,
                               ),
-                              onPressed: () => showAmountSheet(
-                                context,
-                                title: 'Recharger (XOF)',
-                                onConfirm: (amount) async {
-                                  final success = await wallet.rechargeWithFedapay(amount);
-                                  if (!success) {
-                                    Get.snackbar('Erreur', 'Recharge échouée',
-                                        snackPosition: SnackPosition.BOTTOM,
-                                        backgroundColor: Colors.white,
-                                        colorText: Colors.black);
-                                  }
-                                },
-                              ),
+                              onPressed: () => _showRechargeSheet(context),
                             ),
                           ),
                         ],
@@ -151,7 +139,7 @@ class WalletScreen extends StatelessWidget {
                                   color: cs.onSurfaceVariant)),
                           const Spacer(),
                           Obx(() => Text('${wallet.transactions.length} • Banque',
-                              style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant.withValues(alpha: 0.6)))),
+                              style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant.withOpacity(0.6)))),
                         ],
                       ),
                     ),
@@ -160,13 +148,13 @@ class WalletScreen extends StatelessWidget {
                         padding: const EdgeInsets.all(20),
                         child: Column(
                           children: [
-                            Icon(Icons.account_balance, size: 28, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
+                            Icon(Icons.account_balance, size: 28, color: cs.onSurfaceVariant.withOpacity(0.3)),
                             const SizedBox(height: 8),
                             Text('Aucune transaction — portefeuille banque à 0 FCFA',
                                 textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
                             const SizedBox(height: 4),
                             Text('Faites un dépôt ou une recharge pour commencer.',
-                                textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.6), fontSize: 11)),
+                                textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant.withOpacity(0.6), fontSize: 11)),
                           ],
                         ),
                       ),
@@ -188,6 +176,417 @@ class WalletScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _showRechargeSheet(BuildContext context) async {
+    final wallet = WalletService.to;
+
+    final amountController = TextEditingController(text: '1000');
+    final phoneController = TextEditingController();
+
+    // Pré-remplir le numéro si disponible dans le profil de l'utilisateur
+    if (Get.isRegistered<AuthService>()) {
+      final userPhone = AuthService.to.currentUser.value?.phoneNumber;
+      if (userPhone != null && userPhone.isNotEmpty) {
+        String clean = userPhone.replaceAll(RegExp(r'[^0-9]'), '');
+        if (clean.startsWith('229') && clean.length > 8) {
+          clean = clean.substring(3);
+        }
+        phoneController.text = clean;
+      }
+    }
+
+    final selectedMode = 'mtn_open'.obs; // 'mtn_open', 'moov', 'card'
+    final isSubmitting = false.obs;
+    final errorMessage = ''.obs;
+
+    await Get.bottomSheet(
+      SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: SingleChildScrollView(
+              child: Obx(() {
+                final mode = selectedMode.value;
+                final isMobileMoney = mode == 'mtn_open' || mode == 'moov';
+
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Barre de poignée
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+
+                    // En-tête
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: ChatMeColors.violet.withOpacity(0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.account_balance_wallet, color: ChatMeColors.violet, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Recharger le portefeuille',
+                                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87),
+                              ),
+                              Text(
+                                'Paiement sécurisé FedaPay Bénin',
+                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Section Montant
+                    Text(
+                      'MONTANT (FCFA)',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700, letterSpacing: 0.5),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: amountController,
+                      keyboardType: TextInputType.number,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black),
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.monetization_on_outlined, color: ChatMeColors.violet),
+                        suffixText: 'FCFA',
+                        suffixStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black54),
+                        hintText: 'Ex: 1000',
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: ChatMeColors.violet, width: 2)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Suggestions montants rapides
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [500, 1000, 2000, 5000, 10000].map((amt) {
+                        final isSelected = amountController.text == amt.toString();
+                        return InkWell(
+                          onTap: () {
+                            amountController.text = amt.toString();
+                            selectedMode.refresh();
+                          },
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: isSelected ? ChatMeColors.violet : Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: isSelected ? ChatMeColors.violet : Colors.grey.shade300,
+                              ),
+                            ),
+                            child: Text(
+                              '${FormatUtils.fmtFcfa(amt)} F',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: isSelected ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Section Moyen de paiement
+                    Text(
+                      'MOYEN DE PAIEMENT',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700, letterSpacing: 0.5),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // MTN
+                    _rechargePaymentTile(
+                      title: 'MTN Mobile Money Bénin',
+                      subtitle: 'Invite USSD directe sur votre mobile',
+                      badgeText: 'Populaire',
+                      badgeColor: const Color(0xFFFFCC00),
+                      badgeTextColor: Colors.black,
+                      isSelected: mode == 'mtn_open',
+                      icon: Icons.phone_android,
+                      iconColor: const Color(0xFFD49B00),
+                      onTap: () => selectedMode.value = 'mtn_open',
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Moov
+                    _rechargePaymentTile(
+                      title: 'Moov Money Bénin',
+                      subtitle: 'Invite USSD directe sur votre mobile',
+                      isSelected: mode == 'moov',
+                      icon: Icons.phone_android,
+                      iconColor: const Color(0xFF008938),
+                      onTap: () => selectedMode.value = 'moov',
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Carte Bancaire
+                    _rechargePaymentTile(
+                      title: 'Carte bancaire / Autre',
+                      subtitle: 'Visa, Mastercard ou portail web FedaPay',
+                      isSelected: mode == 'card',
+                      icon: Icons.credit_card,
+                      iconColor: Colors.blueAccent,
+                      onTap: () => selectedMode.value = 'card',
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Numéro de téléphone pour Mobile Money
+                    if (isMobileMoney) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'NUMÉRO DU COMPTE BÉNIN',
+                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.grey.shade700, letterSpacing: 0.5),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text('Bénin (+229)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.green)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: phoneController,
+                        keyboardType: TextInputType.phone,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 1, color: Colors.black),
+                        decoration: InputDecoration(
+                          prefixIcon: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                            child: const Text('+229', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.grey)),
+                          ),
+                          prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+                          hintText: '97 00 00 00',
+                          filled: true,
+                          fillColor: Colors.grey.shade100,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: ChatMeColors.violet, width: 2)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '📲 Une notification USSD sera envoyée sur ce numéro pour valider avec votre code PIN.',
+                        style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+
+                    if (errorMessage.value.isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.red.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline, color: Colors.red, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                errorMessage.value,
+                                style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    // Bouton Valider
+                    SizedBox(
+                      height: 48,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: ChatMeColors.violet,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          elevation: 0,
+                        ),
+                        onPressed: isSubmitting.value
+                            ? null
+                            : () async {
+                                final rawAmt = amountController.text.trim();
+                                final amt = int.tryParse(rawAmt);
+                                if (amt == null || amt < 100) {
+                                  errorMessage.value = 'Veuillez saisir un montant valide (minimum 100 FCFA)';
+                                  return;
+                                }
+
+                                final phone = phoneController.text.trim();
+                                if (isMobileMoney) {
+                                  final clean = phone.replaceAll(RegExp(r'[^0-9]'), '');
+                                  if (clean.length < 8) {
+                                    errorMessage.value = 'Veuillez saisir un numéro de téléphone valide (8 chiffres min)';
+                                    return;
+                                  }
+                                }
+
+                                errorMessage.value = '';
+                                isSubmitting.value = true;
+                                Get.back();
+
+                                await wallet.rechargeWithFedapay(
+                                  amt,
+                                  phoneNumber: phone,
+                                  mode: mode,
+                                );
+                              },
+                        child: isSubmitting.value
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: const [
+                                  Icon(Icons.lock_outline, size: 18, color: Colors.white),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Valider et Payer',
+                                    style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
+                );
+              }),
+            ),
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+    );
+  }
+
+  Widget _rechargePaymentTile({
+    required String title,
+    required String subtitle,
+    required bool isSelected,
+    required IconData icon,
+    required Color iconColor,
+    required VoidCallback onTap,
+    String? badgeText,
+    Color? badgeColor,
+    Color? badgeTextColor,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? ChatMeColors.violet.withOpacity(0.08) : Colors.grey.shade50,
+          border: Border.all(
+            color: isSelected ? ChatMeColors.violet : Colors.grey.shade300,
+            width: isSelected ? 1.5 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.black87),
+                      ),
+                      if (badgeText != null) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: badgeColor ?? Colors.amber,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            badgeText,
+                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: badgeTextColor ?? Colors.black),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: isSelected ? ChatMeColors.violet : Colors.grey.shade400,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _showQrChoice(BuildContext context) async {
     await Get.bottomSheet(
       SafeArea(
@@ -200,13 +599,13 @@ class WalletScreen extends StatelessWidget {
             const Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text('Choisissez une action', style: TextStyle(fontSize: 13, color: ChatMeColors.inkSoft), textAlign: TextAlign.center)),
             const SizedBox(height: 16),
             ListTile(
-              leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: ChatMeColors.violet.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.arrow_upward, color: ChatMeColors.violet)),
+              leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: ChatMeColors.violet.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.arrow_upward, color: ChatMeColors.violet)),
               title: const Text('Envoyer', style: TextStyle(fontWeight: FontWeight.w600)),
               subtitle: const Text('Scanner le QR du receveur', style: TextStyle(fontSize: 12, color: ChatMeColors.inkSoft)),
               onTap: () { Get.back(); _scanForUserToPay(context); },
             ),
             ListTile(
-              leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: ChatMeColors.cProfil.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.qr_code, color: ChatMeColors.cProfil)),
+              leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: ChatMeColors.cProfil.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.qr_code, color: ChatMeColors.cProfil)),
               title: const Text('Recevoir', style: TextStyle(fontWeight: FontWeight.w600)),
               subtitle: const Text('Afficher mon QR pour être payé', style: TextStyle(fontSize: 12, color: ChatMeColors.inkSoft)),
               onTap: () { Get.back(); Get.to(() => const MyQrScreen()); },
@@ -507,7 +906,7 @@ class _TxItem extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: cs.outline.withValues(alpha: 0.3), width: 0.8)),
+        border: Border(bottom: BorderSide(color: cs.outline.withOpacity(0.3), width: 0.8)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,

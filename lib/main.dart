@@ -140,7 +140,7 @@ void _handleDeepLink(Uri uri) {
       if (kDebugMode) print('[DeepLink] fragment tokens access=${accessToken != null} refresh=${refreshToken != null}');
       if (accessToken != null && refreshToken != null) {
         // Laisser Supabase récupérer la session via getSessionFromUrl est auto, mais on force refresh
-        SupabaseConfig.client.auth.getSession().then((_) {
+        SupabaseConfig.client.auth.refreshSession().whenComplete(() {
           Get.offAll(() => const HomeScreen());
         });
         return;

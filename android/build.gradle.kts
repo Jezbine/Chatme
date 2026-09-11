@@ -5,6 +5,20 @@ allprojects {
     }
 }
 
+open class FlutterPluginVersionExtension {
+    val compileSdkVersion: Int = 36
+    val minSdkVersion: Int = 24
+    val targetSdkVersion: Int = 36
+    val ndkVersion: String = "27.0.12077973"
+}
+
+subprojects {
+    if (project.name != "app") {
+        project.extensions.findByType(FlutterPluginVersionExtension::class.java)
+            ?: project.extensions.create("flutter", FlutterPluginVersionExtension::class.java)
+    }
+}
+
 val newBuildDir: Directory =
     rootProject.layout.buildDirectory
         .dir("../../build")

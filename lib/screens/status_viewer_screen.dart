@@ -145,7 +145,7 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<int>(
-              initialValue: item.durationMinutes,
+              value: item.durationMinutes,
               decoration: const InputDecoration(labelText: 'Visibilité (min)'),
               items: const [
                 DropdownMenuItem(value: 1, child: Text('1 min')),
