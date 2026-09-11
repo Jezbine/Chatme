@@ -136,7 +136,9 @@ class AuthService extends GetxService with WidgetsBindingObserver {
         }
         await _fetchUserProfile(session.user.id);
         startPresenceHeartbeat();
-        Get.find<MessagingService>().loadConversations();
+        try {
+          Get.find<MessagingService>().loadConversations();
+        } catch (_) {}
       } else if (event == AuthChangeEvent.signedOut) {
         if (kDebugMode) print('[AuthService] User signed out');
         stopPresenceHeartbeat();

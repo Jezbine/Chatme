@@ -34,8 +34,7 @@ void main() async {
 
   // Fix LocaleDataException: initialiser intl avant tout DateFormat
   await initializeDateFormatting('fr_FR', null);
-  await initializeDateFormatting('fr', null);
-  await initializeDateFormatting('en', null);
+  await initializeDateFormatting('en_US', null);
 
   // 1) Config critiques en parallèle (Supabase + Firebase ne dépendent pas l'un de l'autre)
   await Future.wait([
@@ -93,8 +92,10 @@ void _wireErrorPopups() {
       });
   wire(AuthService.to.errorMessage);
   wire(MessagingService.to.errorMessage);
-  // Note: Wallet/Contacts/Moments/Status utilisent Get.snackbar direct + debugPrint;
-  // TODO: leur ajouter RxString errorMessage pour unifier le wiring
+  wire(WalletService.to.errorMessage);
+  wire(ContactsService.to.errorMessage);
+  wire(MomentsService.to.errorMessage);
+  wire(StatusService.to.errorMessage);
 }
 
 void _initDeepLinks() {
@@ -194,14 +195,13 @@ class ChatMeApp extends StatelessWidget {
         themeMode: themeMode,
         initialRoute: '/',
         getPages: [
-          GetPage(name: '/', page: () => const SplashScreen()),
+          GetPage(name: '/', page: () => const HomeScreen()),
           GetPage(name: '/phone', page: () => const PhoneInputScreen()),
           GetPage(name: '/otp', page: () => OtpVerificationScreen(phoneNumber: Get.arguments)),
           GetPage(name: '/profile-setup', page: () => const ProfileSetupScreen()),
           GetPage(name: '/home', page: () => const HomeScreen()),
           GetPage(name: '/email-verify', page: () => EmailVerificationScreen(email: Get.arguments)),
         ],
-        home: const SplashScreen(),
       );
     });
   }
