@@ -1,0 +1,33 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3C3489"/>
+      <stop offset="100%" stop-color="#2C2566"/>
+    </linearGradient>
+    <linearGradient id="bubble" x1="20%" y1="20%" x2="80%" y2="80%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E9E6F7"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="24" stdDeviation="32" flood-color="#000000" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <!-- Fond arrondi (squircle) -->
+  <rect x="0" y="0" width="1024" height="1024" rx="220" ry="220" fill="url(#bg)"/>
+  <!-- Cercle blanc central (liquid glass) -->
+  <g filter="url(#shadow)">
+    <circle cx="512" cy="512" r="260" fill="url(#bubble)" opacity="0.98"/>
+    <circle cx="512" cy="512" r="260" fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="6"/>
+  </g>
+  <!-- Icône chat bubble -->
+  <g transform="translate(512,512)">
+    <!-- bulle -->
+    <path d="M -110 -78 L 110 -78 C 138 -78 160 -56 160 -28 L 160 68 C 160 96 138 118 110 118 L 18 118 L -38 162 L -38 118 L -110 118 C -138 118 -160 96 -160 68 L -160 -28 C -160 -56 -138 -78 -110 -78 Z"
+          fill="#3C3489" opacity="1"/>
+    <!-- points / lignes intérieures pour effet chat -->
+    <rect x="-96" y="-28" width="192" height="18" rx="9" fill="white" opacity="0.95"/>
+    <rect x="-96" y="12" width="128" height="18" rx="9" fill="white" opacity="0.75"/>
+  </g>
+  <!-- Reflet liquid glass -->
+  <ellipse cx="432" cy="382" rx="90" ry="48" fill="white" opacity="0.16" transform="rotate(-18 432 382)"/>
+</svg>
