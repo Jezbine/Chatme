@@ -402,7 +402,7 @@ class _MenuItem extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: cs.primary.withValues(alpha: 0.12),
+                color: cs.primary.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(11),
               ),
               child: Icon(icon, color: iconColor ?? cs.primary, size: 20),

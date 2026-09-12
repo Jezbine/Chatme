@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:chatme/core/theme/chatme_theme.dart';
 import 'package:chatme/services/call_service.dart';
@@ -185,7 +186,7 @@ class _CallScreenState extends State<CallScreen> with WidgetsBindingObserver {
               Positioned.fill(
                 child: VideoTrackRenderer(
                   _callService.remoteVideoTrack.value!,
-                  fit: VideoViewFit.cover,
+                  fit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                 ),
               ),
 
@@ -202,7 +203,7 @@ class _CallScreenState extends State<CallScreen> with WidgetsBindingObserver {
                     border: Border.all(color: Colors.white24),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.3),
+                        color: Colors.black.withOpacity(0.3),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),
@@ -211,7 +212,7 @@ class _CallScreenState extends State<CallScreen> with WidgetsBindingObserver {
                   clipBehavior: Clip.antiAlias,
                   child: VideoTrackRenderer(
                     _callService.localVideo!,
-                    fit: VideoViewFit.cover,
+                    fit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                     mirrorMode: VideoViewMirrorMode.mirror,
                   ),
                 ),
@@ -275,7 +276,7 @@ class _CallScreenState extends State<CallScreen> with WidgetsBindingObserver {
                   clipBehavior: Clip.antiAlias,
                   child: VideoTrackRenderer(
                     _callService.localVideo!,
-                    fit: VideoViewFit.cover,
+                    fit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
                     mirrorMode: VideoViewMirrorMode.mirror,
                   ),
                 ),

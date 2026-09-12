@@ -267,7 +267,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                           decoration: BoxDecoration(
                             color: isVisible ? Colors.white : Colors.grey.shade50,
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: isVisible ? cs.primary.withValues(alpha: 0.3) : Colors.grey.shade200),
+                            border: Border.all(color: isVisible ? cs.primary.withOpacity(0.3) : Colors.grey.shade200),
                           ),
                           child: CheckboxListTile(
                             value: isVisible,
@@ -341,7 +341,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(14)),
+                decoration: BoxDecoration(color: cs.primary.withOpacity(0.10), borderRadius: BorderRadius.circular(14)),
                 child: Row(
                   children: [
                     Icon(Icons.search, color: cs.onSurfaceVariant, size: 18),
@@ -351,7 +351,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                       onTap: _showLayoutPicker,
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: cs.primary.withValues(alpha: 0.3))),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: cs.primary.withOpacity(0.3))),
                         child: Row(children: [
                           const Icon(Icons.grid_view, size: 14, color: Colors.black),
                           const SizedBox(width: 4),
@@ -380,12 +380,12 @@ class _ServicesScreenState extends State<ServicesScreen> {
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
               child: Row(
                 children: [
-                  Icon(Icons.apps, size: 12, color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
+                  Icon(Icons.apps, size: 12, color: cs.onSurfaceVariant.withOpacity(0.7)),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       isEditMode ? 'Appui long et glissez pour réorganiser • $columns×$rows' : 'Disposition $columns×$rows • ${tiles.length} affichés • “Plus” pour personnaliser',
-                      style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
+                      style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant.withOpacity(0.7)),
                     ),
                   ),
                   GestureDetector(onTap: _showPersonalizeSheet, child: Text('Personnaliser', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: cs.primary))),
@@ -418,7 +418,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                         decoration: BoxDecoration(
                           color: cs.primary,
                           borderRadius: BorderRadius.circular(16),
-                          boxShadow: isDark ? null : [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 6, offset: const Offset(0, 2))],
+                          boxShadow: isDark ? null : [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6, offset: const Offset(0, 2))],
                         ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -426,7 +426,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                             Container(
                               width: 38,
                               height: 38,
-                              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.22), borderRadius: BorderRadius.circular(12)),
+                              decoration: BoxDecoration(color: Colors.white.withOpacity(0.22), borderRadius: BorderRadius.circular(12)),
                               child: const Icon(Icons.apps, color: Colors.white, size: 22),
                             ),
                             const SizedBox(height: 7),
@@ -513,7 +513,7 @@ class _ServiceTile extends StatelessWidget {
               color: cs.surface,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: cs.outline, width: isDark ? 1 : 0.5),
-              boxShadow: isDark ? null : [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 6, offset: const Offset(0, 2))],
+              boxShadow: isDark ? null : [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 6, offset: const Offset(0, 2))],
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
@@ -524,24 +524,24 @@ class _ServiceTile extends StatelessWidget {
                   Container(
                     width: iconSize,
                     height: iconSize,
-                    decoration: BoxDecoration(color: service.color.withValues(alpha: isEditMode ? 0.9 : 0.85), borderRadius: BorderRadius.circular(12)),
+                    decoration: BoxDecoration(color: service.color.withOpacity(isEditMode ? 0.9 : 0.85), borderRadius: BorderRadius.circular(12)),
                     child: Icon(service.icon, color: Colors.white, size: iconInner),
                   ),
                   const SizedBox(height: 6),
                   Text(service.label, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(fontSize: labelSize, fontWeight: FontWeight.w700, color: cs.onSurface)),
                   const SizedBox(height: 2),
-                  Text(service.description, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(fontSize: descSize, color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
+                  Text(service.description, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(fontSize: descSize, color: cs.onSurfaceVariant.withOpacity(0.7))),
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(color: isEditMode ? Colors.orange.withValues(alpha: 0.12) : cs.primary.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(6)),
+                    decoration: BoxDecoration(color: isEditMode ? Colors.orange.withOpacity(0.12) : cs.primary.withOpacity(0.10), borderRadius: BorderRadius.circular(6)),
                     child: Text(isEditMode ? 'Glisser' : 'Bientôt', style: TextStyle(fontSize: (descSize * 0.9).clamp(6.0, 7.0), fontWeight: FontWeight.w700, color: isEditMode ? Colors.orange : cs.primary)),
                   ),
                 ],
               ),
             ),
           ),
-          Positioned(top: 6, right: 6, child: Icon(isEditMode ? Icons.drag_indicator : Icons.lock_clock, size: 13, color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
+          Positioned(top: 6, right: 6, child: Icon(isEditMode ? Icons.drag_indicator : Icons.lock_clock, size: 13, color: cs.onSurfaceVariant.withOpacity(0.5))),
         ],
       );
     });

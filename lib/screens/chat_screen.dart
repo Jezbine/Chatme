@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:chatme/services/messaging_service.dart';
 import 'package:chatme/services/auth_service.dart';
+import 'package:chatme/services/settings_service.dart';
 import 'package:chatme/core/services/notification_service.dart';
 import 'package:chatme/models/conversation.dart';
 import 'package:chatme/models/message.dart';
@@ -622,7 +623,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           const SizedBox(height: 8),
           Text(
             'Dites bonjour !',
-            style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
+            style: TextStyle(color: cs.onSurfaceVariant.withOpacity(0.7)),
           ),
         ],
       ),
@@ -840,7 +841,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               children: [
                 Text(msg.content ?? 'Fichier', style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
                 if (msg.mediaSizeBytes != null)
-                  Text(_formatFileSize(msg.mediaSizeBytes!), style: TextStyle(fontSize: 11, color: isMine ? cs.onPrimary.withValues(alpha: 0.7) : cs.onSurfaceVariant)),
+                  Text(_formatFileSize(msg.mediaSizeBytes!), style: TextStyle(fontSize: 11, color: isMine ? cs.onPrimary.withOpacity(0.7) : cs.onSurfaceVariant)),
               ],
             ),
           ],

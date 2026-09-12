@@ -195,7 +195,7 @@ class _AppLockScreenState extends State<AppLockScreen> {
                   height: 16,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: active ? Colors.white : Colors.white.withValues(alpha: 0.3),
+                    color: active ? Colors.white : Colors.white.withOpacity(0.3),
                   ),
                 );
               }),

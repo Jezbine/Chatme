@@ -179,56 +179,58 @@ class _StatusPostScreenState extends State<StatusPostScreen> {
             const Text('DURÉE DE VISIBILITÉ',
                 style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: ChatMeColors.inkSoft)),
             const SizedBox(height: 10),
-            RadioGroup<int>(
-              groupValue: _custom ? -1 : _duration,
-              onChanged: (v) {
-                if (v != null) {
-                  setState(() {
-                    if (v == -1) {
-                      _custom = true;
-                    } else {
-                      _duration = v;
-                      _custom = false;
-                    }
-                  });
-                }
-              },
-              child: Column(
-                children: [
-                  ..._presets.map((p) => Row(
-                        children: [
-                          Radio<int>(
-                            value: p['min'] as int,
-                            activeColor: ChatMeColors.violet,
-                          ),
-                          Text(p['label'] as String),
-                        ],
-                      )),
-                  Row(
-                    children: [
-                      const Radio<int>(
-                        value: -1,
-                        activeColor: ChatMeColors.violet,
-                      ),
-                      const Text('Personnalisé : '),
-                      SizedBox(
-                        width: 70,
-                        child: TextField(
-                          controller: _customCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            isCollapsed: true,
-                            hintText: 'min',
-                            contentPadding: EdgeInsets.symmetric(vertical: 6),
-                          ),
-                          onChanged: (_) => setState(() => _custom = true),
+            Column(
+              children: [
+                ..._presets.map((p) => Row(
+                      children: [
+                        Radio<int>(
+                          value: p['min'] as int,
+                          groupValue: _custom ? -1 : _duration,
+                          onChanged: (v) {
+                            if (v != null) {
+                              setState(() {
+                                _duration = v;
+                                _custom = false;
+                              });
+                            }
+                          },
+                          activeColor: ChatMeColors.violet,
                         ),
+                        Text(p['label'] as String),
+                      ],
+                    )),
+                Row(
+                  children: [
+                    Radio<int>(
+                      value: -1,
+                      groupValue: _custom ? -1 : _duration,
+                      onChanged: (v) {
+                        if (v != null) {
+                          setState(() {
+                            _custom = true;
+                          });
+                        }
+                      },
+                      activeColor: ChatMeColors.violet,
+                    ),
+                    const Text('Personnalisé : '),
+                    SizedBox(
+                      width: 70,
+                      child: TextField(
+                        controller: _customCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          isCollapsed: true,
+                          hintText: 'min',
+                          contentPadding: EdgeInsets.symmetric(vertical: 6),
+                        ),
+                        onChanged: (_) => setState(() => _custom = true),
                       ),
-                      const Text(' min'),
-                    ],
-                  ),
-                ],
-              ),
+                    ),
+                    const Text(' min'),
+                  ],
+                ),
+              ],
             ),
             const SizedBox(height: 10),
             Container(

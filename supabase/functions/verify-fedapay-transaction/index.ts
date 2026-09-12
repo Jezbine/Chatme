@@ -5,9 +5,10 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
-const FEDA_API_KEY = Deno.env.get("FEDA_API_KEY")!;
-const FEDA_ENV = Deno.env.get("FEDA_ENV") ?? "sandbox";
-const FEDA_BASE = FEDA_ENV === "live" ? "https://api.fedapay.com/v1" : "https://sandbox-api.fedapay.com/v1";
+const FEDA_API_KEY = Deno.env.get("FEDA_API_KEY") || Deno.env.get("FEDAPAY_SECRET_KEY") || "";
+const envConfig = (Deno.env.get("FEDA_ENV") ?? "").toLowerCase();
+const isLive = envConfig === "live" || FEDA_API_KEY.startsWith("sk_live_");
+const FEDA_BASE = isLive ? "https://api.fedapay.com/v1" : "https://sandbox-api.fedapay.com/v1";
 
 serve(async (req) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
@@ -32,30 +33,55 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: "FedaPay fetch failed", details: txt }), { status: 502 });
   }
   const feda = await fedaRes.json();
-  const status = feda?.transaction?.status ?? feda?.status;
+  const txObj = feda?.["v1/transaction"] ?? feda?.transaction ?? feda;
+  const status = txObj?.status;
   // FedaPay statuses: approved, pending, canceled - seul approved crédite
   if (status !== "approved") {
     return new Response(JSON.stringify({ status, credited: false }), { status: 200 });
   }
-  const fedaAmount = feda?.transaction?.amount ?? feda?.amount;
+  const fedaAmount = txObj?.amount;
   if (Number(fedaAmount) !== Number(amount)) {
     return new Response(JSON.stringify({ error: "Amount mismatch", fedaAmount, amount }), { status: 400 });
   }
 
-  // 2. Vérifier que le user est bien le propriétaire (via metadata si stocké) - au minimum même user que l'appel
-  // 3. Créditer atomiquement via RPC wallet_deposit (idempotent via transaction_id unique)
-  // On stocke transaction_id dans wallet_transactions pour dédupliquer
-  const { data: existing } = await supabase.from("wallet_transactions").select("id").eq("id", transaction_id).maybeSingle();
+  // 2. Vérifier si la transaction a déjà été créditée (idempotence par label contenant l'ID FedaPay)
+  const label = `Recharge FedaPay #${transaction_id}`;
+  const { data: existing } = await supabase
+    .from("wallet_transactions")
+    .select("id")
+    .eq("label", label)
+    .maybeSingle();
+
   if (existing) {
-    return new Response(JSON.stringify({ status: "already_processed", credited: false }), { status: 200 });
+    const { data: balRow } = await supabase
+      .from("wallet_balances")
+      .select("balance_cents")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    return new Response(
+      JSON.stringify({
+        status: "already_processed",
+        credited: false,
+        balance_cents: balRow?.balance_cents ?? 0,
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
   }
 
-  // RPC atomique - à adapter selon votre fonction wallet_deposit qui gère balance + insert transaction
-  const { data: newBalance, error } = await supabase.rpc("wallet_deposit", { p_amount: amount, p_label: `Recharge FedaPay #${transaction_id}` });
-  if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+  // 3. Créditer atomiquement via RPC wallet_deposit (qui met à jour le solde et insère la transaction)
+  const { data: newBalance, error } = await supabase.rpc("wallet_deposit", {
+    p_amount: amount,
+    p_label: label,
+  });
+  if (error) {
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-  // Tracer la transaction FedaPay pour idempotence
-  await supabase.from("wallet_transactions").upsert({ id: transaction_id, user_id: user.id, label: `Recharge FedaPay`, amount_cents: amount, status: "completed" }, { onConflict: "id" });
-
-  return new Response(JSON.stringify({ status: "completed", credited: true, balance_cents: newBalance }), { status: 200, headers: { "Content-Type": "application/json" } });
+  return new Response(
+    JSON.stringify({ status: "completed", credited: true, balance_cents: newBalance }),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
 });

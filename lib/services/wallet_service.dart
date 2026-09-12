@@ -7,8 +7,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:feda_flutter/feda_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:chatme/config/fedapay_config.dart';
 import 'package:chatme/core/theme/chatme_theme.dart' show ChatMeColors;
 import 'package:chatme/core/utils/format_utils.dart';
+import 'package:chatme/services/auth_service.dart';
 
 class WalletTransaction {
   final String id;
@@ -58,22 +60,18 @@ class WalletService extends GetxService {
   }
 
   void _initFedaPay() {
-    const apiKey = String.fromEnvironment('FEDA_API_KEY', defaultValue: '');
-    const envStr = String.fromEnvironment('FEDA_ENV', defaultValue: 'sandbox');
-    if (apiKey.isEmpty || apiKey.contains('placeholder')) {
+    if (!FedaPayConfig.isConfigured) {
       if (kDebugMode) {
-        debugPrint('[Wallet] FEDA_API_KEY non défini (--dart-define). Recharge désactivée jusqu\'à config.');
+        debugPrint('[Wallet] FEDA_API_KEY non défini. Recharge désactivée jusqu\'à config.');
       }
-      // Fix: ne pas configurer avec placeholder (évite 401 silencieux) — rechargeWithFedapay fera snackbar explicite
       return;
     }
-    final isLive = envStr.toLowerCase() == 'live';
     if (kDebugMode) {
-      debugPrint('[Wallet] FedaPay init en mode ${isLive ? 'LIVE' : 'SANDBOX'} (clé fournie via dart-define)');
+      debugPrint('[Wallet] FedaPay init en mode ${FedaPayConfig.isLive ? 'LIVE' : 'SANDBOX'}');
     }
     FedaFlutter.applyConfig(
-      apiKey: apiKey,
-      environment: isLive ? ApiEnvironment.live : ApiEnvironment.sandbox,
+      apiKey: FedaPayConfig.apiKey,
+      environment: FedaPayConfig.isLive ? ApiEnvironment.live : ApiEnvironment.sandbox,
     );
   }
 
@@ -253,19 +251,22 @@ class WalletService extends GetxService {
   }
 
   /// Recharge via FedaPay — conforme docs.fedapay.com :
-  /// 1) createTransaction + getToken 2) ouvre url paiement 3) vérif serveur via Edge Function
-  /// Le solde n'est crédité QUE si FedaPay retourne approved (jamais côté client).
-  /// Si FEDA_API_KEY manquante (cas démo), fallback fonctionnel local pour que la page soit utilisable.
-  Future<bool> rechargeWithFedapay(int amount) async {
+  /// 1) createTransaction avec customer (téléphone, nom, email)
+  /// 2) Si mode mobile money (MTN / Moov) avec numéro, enclenche directPayment (USSD push)
+  /// 3) Sinon ou en repli, ouvre l'URL de paiement FedaPay sécurisée
+  /// 4) Vérifie et crédite le solde uniquement via verify-fedapay-transaction
+  Future<bool> rechargeWithFedapay(
+    int amount, {
+    String? phoneNumber,
+    String? mode,
+  }) async {
     if (amount <= 0) return false;
-    const apiKey = String.fromEnvironment('FEDA_API_KEY', defaultValue: '');
-    if (apiKey.isEmpty || apiKey.contains('placeholder')) {
+    if (!FedaPayConfig.isConfigured) {
       paymentStatus.value = 'failed';
-      if (kDebugMode) debugPrint('[Wallet] FEDA_API_KEY manquante -> recharge bloquée (sécurité anti-crédit gratuit)');
-      // Evite crash Get.snackbar en test (pas de GetMaterialApp)
+      if (kDebugMode) debugPrint('[Wallet] FEDA_API_KEY manquante -> recharge bloquée');
       try {
         if (!Get.testMode) {
-          Get.snackbar('Recharge indisponible', 'FedaPay non configuré (--dart-define FEDA_API_KEY). Contactez l\'administrateur.',
+          Get.snackbar('Recharge indisponible', 'FedaPay non configuré. Veuillez renseigner votre clé dans FedaPayConfig ou via --dart-define.',
               snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.white, colorText: Colors.black, duration: const Duration(seconds: 4));
         }
       } catch (_) {}
@@ -273,31 +274,110 @@ class WalletService extends GetxService {
     }
     paymentStatus.value = 'pending';
     try {
-      // Client FedaPay : customer attaché via email si dispo (merchant_reference traçage)
-      final res = await FedaFlutter.instance.transactions.createTransaction(
-        TransactionCreate(
-          amount: amount,
-          currency: CurrencyIso(iso: 'XOF'),
-          description: 'Recharge portefeuille ChatMe',
-          callbackUrl: 'https://chatme.com/callback',
-          // merchant_reference + custom_metadata pour retrouver la tx côté webhook
-          // customer: customerEmail != null ? {'email': customerEmail} : null,
-        ),
-      );
-      if (!res.isSuccessful || res.data == null) throw Exception('createTransaction failed: $res');
-      final txId = res.data!.id;
-      final tokenRes = await FedaFlutter.instance.transactions.getTransactionToken(txId);
-      if (!tokenRes.isSuccessful || tokenRes.data == null) throw Exception('getTransactionToken failed: $tokenRes');
+      // Nettoyage et normalisation du numéro de téléphone
+      String? cleanPhone;
+      if (phoneNumber != null && phoneNumber.trim().isNotEmpty) {
+        cleanPhone = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
+        if (cleanPhone.startsWith('00229') && cleanPhone.length > 10) {
+          cleanPhone = cleanPhone.substring(5);
+        } else if (cleanPhone.startsWith('229') && cleanPhone.length > 8) {
+          cleanPhone = cleanPhone.substring(3);
+        }
+      }
 
-      // Ouvrir la page de paiement FedaPay (docs: token.url) — conforme checkout
-      String? url;
+      String? email;
+      String? firstname;
+      if (Get.isRegistered<AuthService>()) {
+        final u = AuthService.to.currentUser.value;
+        email = (u?.email != null && u!.email!.isNotEmpty) ? u.email : null;
+        firstname = (u?.displayName != null && u!.displayName!.isNotEmpty) ? u.displayName : null;
+      }
+      email ??= 'client@chatme.app';
+      firstname ??= 'Client';
+
+      CustomerCreate? customer;
+      if (cleanPhone != null && cleanPhone.isNotEmpty) {
+        customer = CustomerCreate(
+          firstname: firstname,
+          lastname: 'ChatMe',
+          email: email,
+          phoneNumber: PhoneNumber(number: cleanPhone, country: 'bj'),
+        );
+      }
+
+      final effectiveMode = mode ?? 'mtn_open';
+
+      // 1. Création de la transaction sur FedaPay
+      ApiResponse<Transaction>? res;
       try {
-        final d = tokenRes.data as dynamic;
-        url = d.url as String? ?? d['url'] as String?;
-      } catch (_) {}
-      if (url != null && url.isNotEmpty) {
+        res = await FedaFlutter.instance.transactions.createTransaction(
+          TransactionCreate(
+            amount: amount,
+            currency: CurrencyIso(iso: 'XOF'),
+            description: 'Recharge portefeuille ChatMe',
+            callbackUrl: FedaPayConfig.callbackUrl,
+            customer: customer,
+          ),
+        );
+      } catch (createErr) {
+        if (kDebugMode) debugPrint('[Wallet] createTransaction avec customer a échoué: $createErr. Tentative sans customer...');
+        // Si FedaPay rejette le format du numéro, on réessaie sans customer pour ne pas bloquer l'utilisateur
+        res = await FedaFlutter.instance.transactions.createTransaction(
+          TransactionCreate(
+            amount: amount,
+            currency: CurrencyIso(iso: 'XOF'),
+            description: 'Recharge portefeuille ChatMe',
+            callbackUrl: FedaPayConfig.callbackUrl,
+          ),
+        );
+      }
+
+      if (res == null || !res.isSuccessful || res.data == null) {
+        throw Exception('createTransaction failed (code ${res?.statusCode})');
+      }
+      final txId = res.data!.id;
+      String? url = res.data!.paymentUrl;
+      String? token = res.data!.paymentToken;
+
+      bool directPaymentInitiated = false;
+
+      // 2. Si Mobile Money (MTN / Moov) avec numéro, initier le paiement direct USSD push
+      if (cleanPhone != null && cleanPhone.isNotEmpty && (effectiveMode == 'mtn_open' || effectiveMode == 'moov')) {
         try {
-          if (kDebugMode) debugPrint('[Wallet] Ouverture paiement FedaPay: $url');
+          if (token == null || token.isEmpty) {
+            if (url != null && url.contains('fedapay.com/')) {
+              token = url.split('fedapay.com/').last.split('?').first;
+            }
+          }
+
+          if (token != null && token.isNotEmpty) {
+            if (kDebugMode) debugPrint('[Wallet] Envoi directPayment mode=$effectiveMode pour $cleanPhone');
+            final directRes = await FedaFlutter.instance.transactions.directPayment(
+              TransactionDirectPayment(
+                currency: CurrencyIso(iso: 'XOF'),
+                description: 'Recharge portefeuille ChatMe',
+                amount: amount,
+                token: token,
+                phoneNumber: PhoneNumber(number: cleanPhone, country: 'bj'),
+              ),
+              mode: effectiveMode,
+            );
+            if (directRes.isSuccessful && directRes.data != null) {
+              directPaymentInitiated = true;
+              if (kDebugMode) debugPrint('[Wallet] directPayment initié avec succès: txId=${directRes.data!.id}');
+            } else {
+              if (kDebugMode) debugPrint('[Wallet] directPayment non concluant: statusCode=${directRes.statusCode}');
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) debugPrint('[Wallet] directPayment exception ($e), repli sur URL');
+        }
+      }
+
+      // Si le paiement direct n'a pas été lancé (mode carte ou repli), ouvrir l'URL
+      if (!directPaymentInitiated && url != null && url.isNotEmpty) {
+        try {
+          if (kDebugMode) debugPrint('[Wallet] Ouverture page web de paiement: $url');
           final uri = Uri.parse(url);
           if (await canLaunchUrl(uri)) {
             await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -307,29 +387,254 @@ class WalletService extends GetxService {
         }
       }
 
-      // Vérification serveur : polling Edge Function verify-fedapay-transaction
-      // Conforme doc : ne pas se fier au callback_url, GET /transactions/{id} côté serveur
-      final verified = await _verifyFedapayOnServer(transactionId: txId.toString(), amount: amount);
-      if (verified) {
-        paymentStatus.value = 'success';
-        await _fetchFromSupabase();
-        await _persistLocal();
-        return true;
-      }
-      // Si non approuvé immédiatement, on reste pending — le webhook fera le crédit
-      paymentStatus.value = 'pending';
-      Get.snackbar('Paiement en attente', 'Finalisez le paiement sur la page FedaPay. Le solde sera crédité après confirmation (webhook).',
-          snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.white, colorText: Colors.black);
-      // Optionnel : on peut aussi créditer en local sandbox pour tests
-      // await _completeFedapayRecharge(amount, txId: txId.toString());
-      return false;
+      // 3. Afficher le volet d'attente interactif avec auto-vérification et confirmation
+      _showWaitingForPaymentSheet(
+        txId.toString(),
+        amount,
+        phone: cleanPhone,
+        mode: effectiveMode,
+        directPaymentInitiated: directPaymentInitiated,
+        paymentUrl: url,
+      );
+      return true;
     } catch (e) {
       if (kDebugMode) debugPrint('[Wallet] rechargeWithFedapay échec: $e');
       paymentStatus.value = 'failed';
-      Get.snackbar('Échec du paiement', 'La recharge n\'a pas été effectuée. Vérifiez votre connexion et réessayez.',
-          snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.white, colorText: Colors.black);
+      try {
+        if (!Get.testMode) {
+          Get.snackbar('Échec du paiement', 'La recharge n\'a pas pu être initiée: $e',
+              snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.white, colorText: Colors.black);
+        }
+      } catch (_) {}
       return false;
     }
+  }
+
+  /// Affiche un volet d'attente convivial avec vérification automatique toutes les 4s
+  void _showWaitingForPaymentSheet(
+    String txId,
+    int amount, {
+    String? phone,
+    String? mode,
+    bool directPaymentInitiated = false,
+    String? paymentUrl,
+  }) {
+    final isChecking = false.obs;
+    final isDone = false.obs;
+    final attempts = 0.obs;
+
+    String operatorName = 'Mobile Money';
+    if (mode == 'mtn_open') operatorName = 'MTN Mobile Money';
+    if (mode == 'moov') operatorName = 'Moov Money';
+    if (mode == 'card') operatorName = 'Carte bancaire';
+
+    // Polling automatique en arrière-plan toutes les 4s (durant 2 minutes max)
+    Future<void> autoPoll() async {
+      while (!isDone.value && attempts.value < 30) {
+        await Future.delayed(const Duration(seconds: 4));
+        if (isDone.value) break;
+        attempts.value++;
+        final ok = await _verifyFedapayOnServer(transactionId: txId, amount: amount);
+        if (ok) {
+          isDone.value = true;
+          paymentStatus.value = 'success';
+          await _fetchFromSupabase();
+          await _persistLocal();
+          if (Get.isBottomSheetOpen == true) {
+            Get.back();
+          }
+          Get.snackbar(
+            'Recharge réussie !',
+            '+${_fmt(amount)} FCFA crédités sur votre portefeuille',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: const Color(0xFF1B8A5A),
+            colorText: Colors.white,
+            duration: const Duration(seconds: 5),
+          );
+          break;
+        }
+      }
+    }
+
+    autoPoll();
+
+    Get.bottomSheet(
+      SafeArea(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: ChatMeColors.violet.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: CircularProgressIndicator(strokeWidth: 3, color: ChatMeColors.violet),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Recharge de ${_fmt(amount)} FCFA',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Mode: $operatorName',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 14),
+                if (directPaymentInitiated && phone != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF9E6),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFFD54F)),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.phone_iphone, color: Color(0xFFE5A100), size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Demande envoyée au +229 $phone',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Veuillez déverrouiller votre téléphone et composer votre code secret Mobile Money pour approuver le débit.',
+                          style: TextStyle(fontSize: 12, color: Colors.black87, height: 1.3),
+                        ),
+                      ],
+                    ),
+                  ),
+                ] else ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'Finalisez votre paiement sur la page sécurisée FedaPay, puis revenez ici.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12.5, color: Colors.black87, height: 1.3),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                Obx(() => SizedBox(
+                      width: double.infinity,
+                      height: 46,
+                      child: ElevatedButton.icon(
+                        icon: isChecking.value
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.check_circle_outline, color: Colors.white, size: 20),
+                        label: Text(
+                          isChecking.value ? 'Vérification en cours...' : 'J\'ai validé mon paiement',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: ChatMeColors.violet,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          elevation: 0,
+                        ),
+                        onPressed: isChecking.value
+                            ? null
+                            : () async {
+                                isChecking.value = true;
+                                final ok = await _verifyFedapayOnServer(transactionId: txId, amount: amount);
+                                isChecking.value = false;
+                                if (ok) {
+                                  isDone.value = true;
+                                  paymentStatus.value = 'success';
+                                  await _fetchFromSupabase();
+                                  await _persistLocal();
+                                  if (Get.isBottomSheetOpen == true) {
+                                    Get.back();
+                                  }
+                                  Get.snackbar(
+                                    'Recharge réussie !',
+                                    '+${_fmt(amount)} FCFA crédités sur votre portefeuille',
+                                    snackPosition: SnackPosition.BOTTOM,
+                                    backgroundColor: const Color(0xFF1B8A5A),
+                                    colorText: Colors.white,
+                                  );
+                                } else {
+                                  Get.snackbar(
+                                    'Paiement en attente',
+                                    'Le paiement n\'a pas encore été validé par l\'opérateur. Veuillez taper votre code secret sur votre téléphone et réessayer.',
+                                    snackPosition: SnackPosition.BOTTOM,
+                                    backgroundColor: Colors.white,
+                                    colorText: Colors.black,
+                                    duration: const Duration(seconds: 4),
+                                  );
+                                }
+                              },
+                      ),
+                    )),
+                if (paymentUrl != null && paymentUrl.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    icon: const Icon(Icons.open_in_browser, size: 16, color: ChatMeColors.violet),
+                    label: const Text(
+                      'Page de paiement web (si pas de notification USSD)',
+                      style: TextStyle(fontSize: 12, color: ChatMeColors.violet, fontWeight: FontWeight.w600),
+                    ),
+                    onPressed: () async {
+                      try {
+                        final uri = Uri.parse(paymentUrl);
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        }
+                      } catch (_) {}
+                    },
+                  ),
+                ],
+                const SizedBox(height: 4),
+                TextButton(
+                  onPressed: () {
+                    isDone.value = true;
+                    Get.back();
+                  },
+                  child: const Text('Fermer cette fenêtre', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      isDismissible: true,
+      enableDrag: true,
+    );
   }
 
   /// Appelle l'Edge Function verify-fedapay-transaction qui vérifie auprès de FedaPay et crédite atomiquement
@@ -354,11 +659,29 @@ class WalletService extends GetxService {
         }
         if (data is Map && data['status'] == 'already_processed') return true;
       }
-      return false;
     } catch (e) {
-      if (kDebugMode) debugPrint('[Wallet] _verifyFedapayOnServer erreur: $e');
-      return false;
+      if (kDebugMode) debugPrint('[Wallet] _verifyFedapayOnServer erreur Edge function: $e');
     }
+
+    // Repli de secours : interrogation directe de l'API FedaPay si l'Edge Function échoue
+    try {
+      final int? idNum = int.tryParse(transactionId);
+      if (idNum != null) {
+        final txRes = await FedaFlutter.instance.transactions.getTransaction(idNum);
+        if (txRes.isSuccessful && txRes.data != null) {
+          final tx = txRes.data!;
+          if (kDebugMode) debugPrint('[Wallet] FedaPay getTransaction status=${tx.status}');
+          if (tx.status == 'approved') {
+            await _completeFedapayRecharge(amount, txId: transactionId);
+            return true;
+          }
+        }
+      }
+    } catch (directErr) {
+      if (kDebugMode) debugPrint('[Wallet] FedaPay getTransaction direct error: $directErr');
+    }
+
+    return false;
   }
 
   // ignore: unused_element

@@ -55,7 +55,7 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
               margin: const EdgeInsets.symmetric(horizontal: 20),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: cs.primary.withValues(alpha: 0.10),
+                color: cs.primary.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
@@ -158,7 +158,7 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
       final tiles = <Widget>[
         _StatusAvatar(
           initials: myInitials,
-          colorValue: ChatMeColors.violet.toARGB32(),
+          colorValue: ChatMeColors.violet.value,
           viewed: myActive.isEmpty,
           label: 'Mon statut',
           onTap: () {
@@ -166,7 +166,7 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
               Get.to(() => StatusViewerScreen(
                     name: 'Mon statut',
                     initials: myInitials,
-                    colorValue: ChatMeColors.violet.toARGB32(),
+                    colorValue: ChatMeColors.violet.value,
                     items: myActive,
                     isMine: true,
                   ));
@@ -216,7 +216,7 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant)),
           const SizedBox(height: 8),
           Text('Appuyez sur + pour commencer une discussion',
-              style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
+              style: TextStyle(color: cs.onSurfaceVariant.withOpacity(0.7))),
         ],
       ),
     );
@@ -224,6 +224,7 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
 
   Widget _buildConversationTile(BuildContext context, Conversation conv) {
     final cs = Theme.of(context).colorScheme;
+    final messaging = Get.find<MessagingService>();
     final currentUserId = Get.find<AuthService>().currentUser.value?.id ?? '';
     final other = conv.participants.firstWhere(
       (p) => p.userId != currentUserId,
@@ -379,7 +380,7 @@ class _StatusAvatar extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.all(3),
                     child: CircleAvatar(
-                      backgroundColor: Color(colorValue).withValues(alpha: 0.15),
+                      backgroundColor: Color(colorValue).withOpacity(0.15),
                       child: Text(initials,
                           style: TextStyle(color: Color(colorValue), fontWeight: FontWeight.w600)),
                     ),
