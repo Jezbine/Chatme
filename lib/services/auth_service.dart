@@ -48,14 +48,14 @@ class AuthService extends GetxService with WidgetsBindingObserver {
   Timer? _presenceTimer;
 
   Future<void> init() async {
-    if (kDebugMode) print('[AuthService] Initializing...');
-    if (kDebugMode) print('[AuthService] Supabase initialized');
+    if (kDebugMode) debugPrint('[AuthService] Initializing...');
+    if (kDebugMode) debugPrint('[AuthService] Supabase initialized');
     // Restaurer l'état de vérification en attente (seulement si nouveau compte non confirmé)
     try {
       final prefs = await SharedPreferences.getInstance();
       pendingVerificationEmail.value = prefs.getString('pending_verification_email') ?? '';
       if (pendingVerificationEmail.value.isNotEmpty && kDebugMode) {
-        print('[AuthService] pendingVerificationEmail restauré: ${pendingVerificationEmail.value}');
+        debugPrint('[AuthService] pendingVerificationEmail restauré: ${pendingVerificationEmail.value}');
       }
     } catch (_) {}
   }
@@ -122,14 +122,14 @@ class AuthService extends GetxService with WidgetsBindingObserver {
   void _initAuthListener() {
     _client.auth.onAuthStateChange.listen((data) async {
       if (kDebugMode) {
-        print(
+        debugPrint(
           '[AuthService] Auth state change: ${data.event}, session: ${data.session != null}');
       }
       final event = data.event;
       final session = data.session;
 
       if (event == AuthChangeEvent.signedIn && session != null) {
-        if (kDebugMode) print('[AuthService] User signed in: ${session.user.id}');
+        if (kDebugMode) debugPrint('[AuthService] User signed in: ${session.user.id}');
         // Si l'email vient d'être confirmé, on efface la vérification en attente
         if (session.user.emailConfirmedAt != null && pendingVerificationEmail.value.isNotEmpty) {
           await clearPendingVerification();
@@ -140,11 +140,11 @@ class AuthService extends GetxService with WidgetsBindingObserver {
           Get.find<MessagingService>().loadConversations();
         } catch (_) {}
       } else if (event == AuthChangeEvent.signedOut) {
-        if (kDebugMode) print('[AuthService] User signed out');
+        if (kDebugMode) debugPrint('[AuthService] User signed out');
         stopPresenceHeartbeat();
         currentUser.value = null;
       } else if (event == AuthChangeEvent.tokenRefreshed) {
-        if (kDebugMode) print('[AuthService] Token refreshed');
+        if (kDebugMode) debugPrint('[AuthService] Token refreshed');
         // Synchroniser emailConfirmedAt après refresh (évite de rester bloqué sur vérification)
         if (session?.user.emailConfirmedAt != null && pendingVerificationEmail.value.isNotEmpty) {
           await clearPendingVerification();
@@ -161,15 +161,15 @@ class AuthService extends GetxService with WidgetsBindingObserver {
     try {
       final session = _client.auth.currentSession;
       if (session != null) {
-        if (kDebugMode) print('[AuthService] Existing session found for: ${session.user.id}');
+        if (kDebugMode) debugPrint('[AuthService] Existing session found for: ${session.user.id}');
         await _fetchUserProfile(session.user.id);
         startPresenceHeartbeat();
         Get.find<MessagingService>().loadConversations();
       } else {
-        if (kDebugMode) print('[AuthService] No existing session - showing phone input');
+        if (kDebugMode) debugPrint('[AuthService] No existing session - showing phone input');
       }
     } catch (e) {
-      if (kDebugMode) print('[AuthService] ERROR checking session: $e');
+      if (kDebugMode) debugPrint('[AuthService] ERROR checking session: $e');
     } finally {
       isInitializing.value = false;
     }
@@ -198,7 +198,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
 
   Future<void> _fetchUserProfile(String userId) async {
     try {
-      if (kDebugMode) print('[AuthService] Fetching profile for user: $userId');
+      if (kDebugMode) debugPrint('[AuthService] Fetching profile for user: $userId');
       final response = await _client
           .from('profiles')
           .select()
@@ -206,12 +206,12 @@ class AuthService extends GetxService with WidgetsBindingObserver {
           .maybeSingle();
 
       if (response == null) {
-        if (kDebugMode) print('[AuthService] Profile not found, creating...');
+        if (kDebugMode) debugPrint('[AuthService] Profile not found, creating...');
         await _ensureProfileExists(userId);
         return;
       }
 
-      if (kDebugMode) print('[AuthService] Profile fetched: $response');
+      if (kDebugMode) debugPrint('[AuthService] Profile fetched: $response');
       final user = _client.auth.currentUser;
       final profile = UserProfile.fromJson({
         ...response,
@@ -225,7 +225,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
 
       FirebaseConfig.syncTokenToSupabase();
     } catch (e) {
-      if (kDebugMode) print('[AuthService] ERROR fetching profile: $e');
+      if (kDebugMode) debugPrint('[AuthService] ERROR fetching profile: $e');
       final msg = e.toString();
       final isRecursion = msg.contains('42P17') || msg.contains('infinite recursion');
       // 42P17 = RLS récursive côté Supabase (SUPABASE_BLOQUANTS_FIX.sql) -> fallback cache + message clair
@@ -234,7 +234,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
         final cached = await _loadCachedProfile(userId);
         if (cached != null) {
           currentUser.value = cached;
-          if (kDebugMode) print('[AuthService] Recursion 42P17 -> cache utilisé, attente fix SQL');
+          if (kDebugMode) debugPrint('[AuthService] Recursion 42P17 -> cache utilisé, attente fix SQL');
           return;
         }
         // Pas de cache : créer profil minimal depuis auth (évite boucle) sans upsert qui re-déclenche RLS
@@ -259,7 +259,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       if (isNetError) {
         final cached = await _loadCachedProfile(userId);
         if (cached != null) {
-          if (kDebugMode) print('[AuthService] Loaded cached profile offline');
+          if (kDebugMode) debugPrint('[AuthService] Loaded cached profile offline');
           currentUser.value = cached;
           return;
         }
@@ -270,7 +270,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
 
   Future<void> _ensureProfileExists(String userId) async {
     try {
-      if (kDebugMode) print('[AuthService] Attempting to create missing profile...');
+      if (kDebugMode) debugPrint('[AuthService] Attempting to create missing profile...');
       final user = _client.auth.currentUser;
       if (user != null) {
         final displayName = user.userMetadata?['display_name'] ?? 'Utilisateur';
@@ -284,18 +284,18 @@ class AuthService extends GetxService with WidgetsBindingObserver {
             'phone_number': phone,
             'display_name': displayName,
           }, onConflict: 'id');
-          if (kDebugMode) print('[AuthService] Profile created via upsert');
+          if (kDebugMode) debugPrint('[AuthService] Profile created via upsert');
         } catch (upsertErr) {
-          if (kDebugMode) print('[AuthService] Upsert failed (maybe email column missing): $upsertErr');
+          if (kDebugMode) debugPrint('[AuthService] Upsert failed (maybe email column missing): $upsertErr');
           try {
             await _client.from('profiles').upsert({
               'id': userId,
               'phone_number': phone,
               'display_name': displayName,
             }, onConflict: 'id');
-            if (kDebugMode) print('[AuthService] Profile created via upsert (without email)');
+            if (kDebugMode) debugPrint('[AuthService] Profile created via upsert (without email)');
           } catch (upsertErr2) {
-            if (kDebugMode) print('[AuthService] Upsert without email also failed: $upsertErr2');
+            if (kDebugMode) debugPrint('[AuthService] Upsert without email also failed: $upsertErr2');
           }
         }
 
@@ -311,9 +311,9 @@ class AuthService extends GetxService with WidgetsBindingObserver {
           await _cacheProfile(loadedProfile);
           // Email confirmé -> on efface la vérification en attente
           if (user.emailConfirmedAt != null) await clearPendingVerification();
-          if (kDebugMode) print('[AuthService] Profile loaded after ensure');
+          if (kDebugMode) debugPrint('[AuthService] Profile loaded after ensure');
         } catch (fetchErr) {
-          if (kDebugMode) print('[AuthService] Fallback: creating minimal profile from auth data');
+          if (kDebugMode) debugPrint('[AuthService] Fallback: creating minimal profile from auth data');
           // Préserver emailConfirmedAt même en fallback RLS (sinon bloque sur vérification)
           final emailConfirmedAt = user.emailConfirmedAt != null
               ? DateTime.tryParse(user.emailConfirmedAt!)
@@ -331,7 +331,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      if (kDebugMode) print('[AuthService] ERROR creating profile: $e');
+      if (kDebugMode) debugPrint('[AuthService] ERROR creating profile: $e');
       errorMessage.value = e.toString();
     }
   }
@@ -345,7 +345,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
     errorMessage.value = '';
 
     try {
-      if (kDebugMode) print('[AuthService] Signing up with email: $email');
+      if (kDebugMode) debugPrint('[AuthService] Signing up with email: $email');
 
       const redirectUrl = String.fromEnvironment('SUPABASE_REDIRECT_URL', defaultValue: 'io.supabase.chatme://login-callback/');
       final response = await _client.auth.signUp(
@@ -356,7 +356,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       );
 
       if (kDebugMode) {
-        print(
+        debugPrint(
           '[AuthService] SignUp response: user=${response.user?.id}, session=${response.session != null}');
       }
 
@@ -378,7 +378,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
         // Vérification uniquement à la création si session null (= email non confirmé)
         if (needsVerification) {
           await _setPendingVerification(user.email ?? email);
-          if (kDebugMode) print('[AuthService] Nouveau compte non confirmé -> pendingVerification');
+          if (kDebugMode) debugPrint('[AuthService] Nouveau compte non confirmé -> pendingVerification');
         } else {
           await clearPendingVerification();
         }
@@ -389,9 +389,9 @@ class AuthService extends GetxService with WidgetsBindingObserver {
             'phone_number': user.phone ?? '',
             'display_name': displayName,
           }, onConflict: 'id');
-          if (kDebugMode) print('[AuthService] Profile created after signup');
+          if (kDebugMode) debugPrint('[AuthService] Profile created after signup');
         } catch (profileErr) {
-          if (kDebugMode) print('[AuthService] Profile upsert after signup failed: $profileErr');
+          if (kDebugMode) debugPrint('[AuthService] Profile upsert after signup failed: $profileErr');
           try {
             await _client.from('profiles').upsert({
               'id': user.id,
@@ -399,9 +399,9 @@ class AuthService extends GetxService with WidgetsBindingObserver {
               'display_name': displayName,
               'email': user.email ?? email,
             }, onConflict: 'id');
-            if (kDebugMode) print('[AuthService] Profile created after signup (with email)');
+            if (kDebugMode) debugPrint('[AuthService] Profile created after signup (with email)');
           } catch (profileErr2) {
-            if (kDebugMode) print('[AuthService] Profile upsert with email also failed: $profileErr2');
+            if (kDebugMode) debugPrint('[AuthService] Profile upsert with email also failed: $profileErr2');
           }
         }
 
@@ -414,14 +414,14 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       return false;
     } on AuthException catch (e) {
       if (kDebugMode) {
-        print(
+        debugPrint(
           '[AuthService] AuthException signUp: ${e.message} | Code: ${e.code}');
       }
       errorMessage.value = AppExceptions.mapAuthError(e.message);
       isLoading.value = false;
       return false;
     } catch (e) {
-      if (kDebugMode) print('[AuthService] ERROR signUp: $e');
+      if (kDebugMode) debugPrint('[AuthService] ERROR signUp: $e');
       errorMessage.value = e.toString();
       isLoading.value = false;
       return false;
@@ -434,7 +434,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
     errorMessage.value = '';
 
     try {
-      if (kDebugMode) print('[AuthService] Signing in with email: $email');
+      if (kDebugMode) debugPrint('[AuthService] Signing in with email: $email');
 
       final response = await _client.auth.signInWithPassword(
         email: email,
@@ -442,7 +442,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       );
 
       if (kDebugMode) {
-        print(
+        debugPrint(
           '[AuthService] SignIn response: user=${response.user?.id}, session=${response.session != null}');
       }
 
@@ -459,7 +459,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       return false;
     } on AuthException catch (e) {
       if (kDebugMode) {
-        print(
+        debugPrint(
           '[AuthService] AuthException signIn: ${e.message} | Code: ${e.code}');
       }
       // Si l'erreur indique email non confirmé, on met en attente vérification (création uniquement)
@@ -470,7 +470,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       isLoading.value = false;
       return false;
     } catch (e) {
-      if (kDebugMode) print('[AuthService] ERROR signIn: $e');
+      if (kDebugMode) debugPrint('[AuthService] ERROR signIn: $e');
       errorMessage.value = e.toString();
       isLoading.value = false;
       return false;
@@ -485,19 +485,19 @@ class AuthService extends GetxService with WidgetsBindingObserver {
 
     try {
       final normalizedPhone = _normalizePhone(phoneNumber);
-      if (kDebugMode) print('[AuthService] Sending SMS OTP to: $normalizedPhone');
+      if (kDebugMode) debugPrint('[AuthService] Sending SMS OTP to: $normalizedPhone');
 
       await _client.auth.signInWithOtp(
         phone: normalizedPhone,
         shouldCreateUser: true,
       );
 
-      if (kDebugMode) print('[AuthService] SMS OTP sent successfully');
+      if (kDebugMode) debugPrint('[AuthService] SMS OTP sent successfully');
       isLoading.value = false;
       return true;
     } on AuthException catch (e) {
       if (kDebugMode) {
-        print(
+        debugPrint(
           '[AuthService] AuthException sending OTP: ${e.message} | Code: ${e.code}');
       }
       // Fix: message explicite si SMS provider non configuré
@@ -509,7 +509,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       isLoading.value = false;
       return false;
     } catch (e) {
-      if (kDebugMode) print('[AuthService] ERROR sending OTP: $e');
+      if (kDebugMode) debugPrint('[AuthService] ERROR sending OTP: $e');
       final msg = e.toString();
       if (msg.contains('over_email_send_rate_limit') || msg.contains('429')) {
         errorMessage.value = 'Trop de demandes email (rate limit Supabase). Attendez 5 min ou configurez un SMTP custom dans Dashboard > Auth > SMTP.';
@@ -528,7 +528,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
 
     try {
       final normalizedPhone = _normalizePhone(phoneNumber);
-      if (kDebugMode) print('[AuthService] Verifying OTP for: $normalizedPhone');
+      if (kDebugMode) debugPrint('[AuthService] Verifying OTP for: $normalizedPhone');
 
       final response = await _client.auth.verifyOTP(
         phone: normalizedPhone,
@@ -537,7 +537,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       );
 
       if (kDebugMode) {
-        print(
+        debugPrint(
           '[AuthService] OTP verification response: user=${response.user?.id}, session=${response.session != null}');
       }
 
@@ -552,14 +552,14 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       return false;
     } on AuthException catch (e) {
       if (kDebugMode) {
-        print(
+        debugPrint(
           '[AuthService] AuthException verifying OTP: ${e.message} | Code: ${e.code}');
       }
       errorMessage.value = AppExceptions.mapAuthError(e.message);
       isLoading.value = false;
       return false;
     } catch (e) {
-      if (kDebugMode) print('[AuthService] ERROR verifying OTP: $e');
+      if (kDebugMode) debugPrint('[AuthService] ERROR verifying OTP: $e');
       errorMessage.value = e.toString();
       isLoading.value = false;
       return false;
@@ -569,15 +569,15 @@ class AuthService extends GetxService with WidgetsBindingObserver {
   /// **Déconnexion**
   Future<void> signOut() async {
     try {
-      if (kDebugMode) print('[AuthService] Signing out...');
+      if (kDebugMode) debugPrint('[AuthService] Signing out...');
       await _client.auth.signOut();
       currentUser.value = null;
       try {
         Get.find<LockService>().markLocked();
       } catch (_) {}
-      if (kDebugMode) print('[AuthService] Signed out successfully');
+      if (kDebugMode) debugPrint('[AuthService] Signed out successfully');
     } catch (e) {
-      if (kDebugMode) print('[AuthService] ERROR signing out: $e');
+      if (kDebugMode) debugPrint('[AuthService] ERROR signing out: $e');
       errorMessage.value = e.toString();
     }
   }
@@ -669,7 +669,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
     errorMessage.value = '';
 
     try {
-      if (kDebugMode) print('[AuthService] Sending email OTP to: $email');
+      if (kDebugMode) debugPrint('[AuthService] Sending email OTP to: $email');
 
       const redirectUrl = String.fromEnvironment('SUPABASE_REDIRECT_URL', defaultValue: 'io.supabase.chatme://login-callback/');
       await _client.auth.signInWithOtp(
@@ -677,19 +677,19 @@ class AuthService extends GetxService with WidgetsBindingObserver {
         emailRedirectTo: redirectUrl,
       );
 
-      if (kDebugMode) print('[AuthService] Email OTP sent successfully');
+      if (kDebugMode) debugPrint('[AuthService] Email OTP sent successfully');
       isLoading.value = false;
       return true;
     } on AuthException catch (e) {
       if (kDebugMode) {
-        print(
+        debugPrint(
           '[AuthService] AuthException email OTP: ${e.message} | Code: ${e.code}');
       }
       errorMessage.value = AppExceptions.mapAuthError(e.message);
       isLoading.value = false;
       return false;
     } catch (e) {
-      if (kDebugMode) print('[AuthService] ERROR email OTP: $e');
+      if (kDebugMode) debugPrint('[AuthService] ERROR email OTP: $e');
       final msg = e.toString();
       if (msg.contains('over_email_send_rate_limit') || msg.contains('429')) {
         errorMessage.value = 'Limite d\'envoi email atteinte (Supabase). Configurez SMTP custom ou attendez 10 min.';
@@ -728,7 +728,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
     errorMessage.value = '';
 
     try {
-      if (kDebugMode) print('[AuthService] Verifying email OTP for: $email');
+      if (kDebugMode) debugPrint('[AuthService] Verifying email OTP for: $email');
 
       final response = await _client.auth.verifyOTP(
         email: email,
@@ -737,7 +737,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       );
 
       if (kDebugMode) {
-        print(
+        debugPrint(
           '[AuthService] Email OTP verification: user=${response.user?.id}, session=${response.session != null}');
       }
 
@@ -753,14 +753,14 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       return false;
     } on AuthException catch (e) {
       if (kDebugMode) {
-        print(
+        debugPrint(
           '[AuthService] AuthException verifyEmailOtp: ${e.message} | Code: ${e.code}');
       }
       errorMessage.value = AppExceptions.mapAuthError(e.message);
       isLoading.value = false;
       return false;
     } catch (e) {
-      if (kDebugMode) print('[AuthService] ERROR verifyEmailOtp: $e');
+      if (kDebugMode) debugPrint('[AuthService] ERROR verifyEmailOtp: $e');
       errorMessage.value = e.toString();
       isLoading.value = false;
       return false;
@@ -778,7 +778,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       if (confirmed) await clearPendingVerification();
       return confirmed;
     } catch (e) {
-      if (kDebugMode) print('[AuthService] ERROR checking email confirmed: $e');
+      if (kDebugMode) debugPrint('[AuthService] ERROR checking email confirmed: $e');
       return false;
     }
   }
@@ -789,19 +789,19 @@ class AuthService extends GetxService with WidgetsBindingObserver {
     errorMessage.value = '';
 
     try {
-      if (kDebugMode) print('[AuthService] Resending confirmation email to: $email');
+      if (kDebugMode) debugPrint('[AuthService] Resending confirmation email to: $email');
       await _client.auth.resend(
         type: OtpType.signup,
         email: email,
       );
-      if (kDebugMode) print('[AuthService] Confirmation email renvoyé');
+      if (kDebugMode) debugPrint('[AuthService] Confirmation email renvoyé');
       isLoading.value = false;
     } on AuthException catch (e) {
-      if (kDebugMode) print('[AuthService] AuthException resend: ${e.message}');
+      if (kDebugMode) debugPrint('[AuthService] AuthException resend: ${e.message}');
       errorMessage.value = AppExceptions.mapAuthError(e.message);
       isLoading.value = false;
     } catch (e) {
-      if (kDebugMode) print('[AuthService] ERROR resend: $e');
+      if (kDebugMode) debugPrint('[AuthService] ERROR resend: $e');
       errorMessage.value = e.toString();
       isLoading.value = false;
     }
