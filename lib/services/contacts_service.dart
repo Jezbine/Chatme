@@ -285,10 +285,16 @@ Map<String, String>? parseUserQrPayload(String raw) {
   // Vérif UUID basique
   final uuidOk = RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(id);
   if (!uuidOk) return null;
-  return {
-    'id': id,
-    'name': Uri.decodeComponent(parts[3]),
-  };
+  // Join au cas où le nom encodé contenait des ':' (%3A) mal décodés ou payload legacy
+  final encodedName = parts.sublist(3).join(':');
+  try {
+    return {
+      'id': id,
+      'name': Uri.decodeComponent(encodedName),
+    };
+  } catch (_) {
+    return {'id': id, 'name': encodedName};
+  }
 }
 
 /// Vérifie côté Supabase que l'utilisateur du QR existe (anti-spoof)

@@ -23,18 +23,29 @@ class _ScanContactScreenState extends State<ScanContactScreen> {
 
   Future<void> _onDetect(String raw) async {
     if (_handled) return;
+    // Support aussi QR paiement wallet : chatme://pay?merchant=... → ignorer ici, afficher info
+    if (raw.startsWith('chatme://pay') || raw.contains('pay?merchant')) {
+      Get.snackbar("QR Paiement", "Utilisez l'onglet Portefeuille → Payer QR",
+          snackPosition: SnackPosition.BOTTOM, backgroundColor: ChatMeColors.violet, colorText: Colors.white);
+      return;
+    }
     final data = parseUserQrPayload(raw);
     if (data == null) {
       Get.snackbar("QR non reconnu", "Ce code n'est pas un contact ChatMe",
           snackPosition: SnackPosition.BOTTOM);
       return;
     }
-    // Vérif serveur anti-spoof
-    final exists = await verifyQrUserExists(data['id']!);
+    // Vérif serveur anti-spoof avec fallback offline (ne bloque pas si réseau indisponible)
+    bool exists = true;
+    try {
+      exists = await verifyQrUserExists(data['id']!);
+    } catch (_) {
+      exists = true;
+    }
     if (!exists) {
-      Get.snackbar("QR invalide", "Utilisateur introuvable côté serveur",
-          snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.red, colorText: Colors.white);
-      return;
+      // En offline on laisse passer avec warning
+      Get.snackbar("QR hors-ligne", "Utilisateur non vérifié côté serveur, ajout local",
+          snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.orange, colorText: Colors.white);
     }
     _handled = true;
     _controller.pause();

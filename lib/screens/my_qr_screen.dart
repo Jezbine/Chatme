@@ -76,18 +76,23 @@ class MyQrScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: QrImageView(
-                  data: payload,
-                  size: 220,
-                  backgroundColor: Colors.white,
-                  dataModuleStyle: const QrDataModuleStyle(
-                    color: ChatMeColors.ink,
-                    dataModuleShape: QrDataModuleShape.square,
-                  ),
-                  eyeStyle: const QrEyeStyle(
-                    color: ChatMeColors.ink,
-                    eyeShape: QrEyeShape.square,
-                  ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final qrSize = (MediaQuery.of(context).size.width * 0.55).clamp(180, 260).toDouble();
+                    return QrImageView(
+                      data: payload,
+                      size: qrSize,
+                      backgroundColor: Colors.white,
+                      dataModuleStyle: const QrDataModuleStyle(
+                        color: ChatMeColors.ink,
+                        dataModuleShape: QrDataModuleShape.square,
+                      ),
+                      eyeStyle: const QrEyeStyle(
+                        color: ChatMeColors.ink,
+                        eyeShape: QrEyeShape.square,
+                      ),
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 20),
