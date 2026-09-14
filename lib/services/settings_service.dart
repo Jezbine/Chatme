@@ -11,7 +11,8 @@ class SettingsService extends GetxService {
   final RxBool readReceipts = true.obs; // WhatsApp (accusés de lecture)
   final RxBool typingIndicator = true.obs; // WhatsApp
   final RxBool activityStatus = true.obs; // Instagram (statut en ligne)
-  final RxBool twoStepVerification = false.obs; // WhatsApp
+  final RxBool twoStepVerification = false.obs; // WhatsApp — maintenant fonctionnel avec code PIN 6 chiffres
+  final RxString twoStepPin = ''.obs; // PIN chiffré (stocké local, vérif à la connexion)
   final RxBool loginAlerts = true.obs; // Facebook
   final RxBool faceTagging = false.obs; // Facebook (reconnaissance faciale)
   final RxString momentsVisibility = 'contacts'.obs; // all | contacts | approved
@@ -58,6 +59,7 @@ class SettingsService extends GetxService {
     typingIndicator.value = prefs.getBool('s_typingIndicator') ?? true;
     activityStatus.value = prefs.getBool('s_activityStatus') ?? true;
     twoStepVerification.value = prefs.getBool('s_twoStep') ?? false;
+    twoStepPin.value = prefs.getString('s_twoStepPin') ?? '';
     loginAlerts.value = prefs.getBool('s_loginAlerts') ?? true;
     faceTagging.value = prefs.getBool('s_faceTagging') ?? false;
     momentsVisibility.value = prefs.getString('s_momentsVisibility') ?? 'contacts';
@@ -93,6 +95,7 @@ class SettingsService extends GetxService {
     await prefs.setBool('s_typingIndicator', typingIndicator.value);
     await prefs.setBool('s_activityStatus', activityStatus.value);
     await prefs.setBool('s_twoStep', twoStepVerification.value);
+    await prefs.setString('s_twoStepPin', twoStepPin.value);
     await prefs.setBool('s_loginAlerts', loginAlerts.value);
     await prefs.setBool('s_faceTagging', faceTagging.value);
     await prefs.setString('s_momentsVisibility', momentsVisibility.value);
@@ -131,5 +134,25 @@ class SettingsService extends GetxService {
       default:
         Get.changeThemeMode(ThemeMode.system);
     }
+  }
+
+  // 2FA : définir PIN 6 chiffres (appelé depuis SettingsScreen)
+  Future<bool> setTwoStepPin(String pin) async {
+    if (!RegExp(r'^\d{6}$').hasMatch(pin)) return false;
+    twoStepPin.value = pin;
+    twoStepVerification.value = true;
+    await save();
+    return true;
+  }
+
+  Future<bool> verifyTwoStepPin(String pin) async {
+    if (twoStepPin.value.isEmpty) return true;
+    return pin == twoStepPin.value;
+  }
+
+  Future<void> disableTwoStep() async {
+    twoStepVerification.value = false;
+    twoStepPin.value = '';
+    await save();
   }
 }

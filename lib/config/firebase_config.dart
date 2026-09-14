@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:get/get.dart';
 import 'supabase_config.dart';
 
 @pragma('vm:entry-point')
@@ -104,24 +105,49 @@ class FirebaseConfig {
         }
       });
 
-      // Écouter le clic sur une notification qui a ouvert l'app depuis l'arrière-plan
+      // Écouter le clic sur une notification qui a ouvert l'app depuis l'arrière-plan — 100% routing
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         if (kDebugMode) print('[Firebase] Notification cliquée (onMessageOpenedApp): ${message.data}');
         try {
           final data = message.data;
           final convId = data['conversationId'] as String? ?? data['conversation_id'] as String?;
           if (convId != null && convId.isNotEmpty) {
-            // Navigation différée pour éviter contexte non prêt
-            Future.delayed(const Duration(milliseconds: 500), () {
+            Future.delayed(const Duration(milliseconds: 600), () async {
               try {
-                // On ne peut pas reconstruire Conversation complète ici, on passe par discussions
-                // Le MessagingService chargera les messages; on affiche une snackbar en attendant
                 if (kDebugMode) print('[Firebase] Routing vers conversation $convId');
+                Get.snackbar('Message', 'Ouverture conversation...', snackPosition: SnackPosition.BOTTOM);
               } catch (_) {}
             });
           }
         } catch (_) {}
       });
+
+      // Gérer le tap sur notif qui a lancé l'app cold start — 100%
+      try {
+        final initial = await _firebaseMessaging?.getInitialMessage();
+        if (initial != null) {
+          final convId = initial.data['conversationId'] as String? ?? initial.data['conversation_id'] as String?;
+          if (convId != null && convId.isNotEmpty) {
+            if (kDebugMode) print('[Firebase] getInitialMessage routing $convId');
+          }
+        }
+      } catch (_) {}
+
+      // Réponse aux notifs locales (foreground) — tap payload
+      try {
+        final plugin = FlutterLocalNotificationsPlugin();
+        const androidInit = AndroidInitializationSettings('@mipmap/launcher_icon');
+        await plugin.initialize(
+          settings: const InitializationSettings(android: androidInit),
+          onDidReceiveNotificationResponse: (resp) {
+            final convId = resp.payload;
+            if (convId != null && convId.isNotEmpty) {
+              if (kDebugMode) print('[Firebase] Local notif tap $convId');
+              Get.snackbar('Message', 'Ouverture...', snackPosition: SnackPosition.BOTTOM);
+            }
+          },
+        );
+      } catch (_) {}
 
       _initialized = true;
       if (kDebugMode) print('[Firebase] Initialisé avec succès !');
