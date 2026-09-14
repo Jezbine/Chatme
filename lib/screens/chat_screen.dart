@@ -907,7 +907,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   if (msg.content != null && msg.content!.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
-                      child: Text(msg.content!, style: TextStyle(color: textColor)),
+                      child: Text(FormatUtils.sanitize(msg.content), style: TextStyle(color: textColor)),
                     ),
                 ],
               )
@@ -959,7 +959,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             if (msg.content != null && msg.content!.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Text(msg.content!, style: TextStyle(color: textColor)),
+                child: Text(FormatUtils.sanitize(msg.content), style: TextStyle(color: textColor)),
               ),
             if (msg.mediaUrl != null)
               Padding(
@@ -978,7 +978,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(msg.content ?? 'Fichier', style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
+                Text(FormatUtils.sanitize(msg.content) != '' ? FormatUtils.sanitize(msg.content) : 'Fichier', style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
                 if (msg.mediaSizeBytes != null)
                   Text(_formatFileSize(msg.mediaSizeBytes!), style: TextStyle(fontSize: 11, color: isMine ? cs.onPrimary.withValues(alpha: 0.7) : cs.onSurfaceVariant)),
               ],
@@ -988,7 +988,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
       default:
         return Text(
-          msg.content ?? '',
+          FormatUtils.sanitize(msg.content),
           style: TextStyle(color: textColor, fontSize: _msgFontSize(), height: 1.35, fontWeight: FontWeight.w500, letterSpacing: 0.1),
         );
     }

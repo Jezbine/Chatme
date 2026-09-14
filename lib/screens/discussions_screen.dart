@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:chatme/core/utils/format_utils.dart';
 import 'chat_screen.dart';
 import '../../services/messaging_service.dart';
 import '../../services/auth_service.dart';
@@ -285,7 +286,7 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
-                        child: Text(conv.getTitle(currentUserId),
+                        child: Text(FormatUtils.sanitize(conv.getTitle(currentUserId)),
                             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: cs.onSurface),
                             overflow: TextOverflow.ellipsis),
                       ),
@@ -309,7 +310,7 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
                           Text('Vous: ', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
                         Expanded(
                           child: Text(
-                            conv.lastMessage?.displayContent ?? 'Démarrez la conversation',
+                            FormatUtils.sanitize(conv.lastMessage?.displayContent ?? 'Démarrez la conversation'),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),

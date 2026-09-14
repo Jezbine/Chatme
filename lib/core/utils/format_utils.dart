@@ -15,4 +15,11 @@ class FormatUtils {
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
   }
+
+  /// Sanitize pour TextSpan — remplace surrogates isolés (UTF-16 mal formé) par �
+  static String sanitize(String? s) {
+    if (s == null || s.isEmpty) return '';
+    // Remplace high surrogate non suivi de low, et low non précédé de high
+    return s.replaceAll(RegExp(r'[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]'), '\uFFFD');
+  }
 }
