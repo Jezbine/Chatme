@@ -50,7 +50,7 @@ class ServiceDetailScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                           decoration: BoxDecoration(
-                            color: Colors.orange.withOpacity(0.15),
+                            color: Colors.orange.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: const Text('Bientôt disponible',
@@ -120,7 +120,7 @@ class ServiceDetailScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.grey.withOpacity(0.06),
+                color: Colors.grey.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: ChatMeColors.border),
               ),
@@ -171,7 +171,7 @@ class _ItemRow extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: service.color.withOpacity(0.75),
+                    color: service.color.withValues(alpha: 0.75),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(service.icon, color: Colors.white, size: 20),
@@ -191,7 +191,7 @@ class _ItemRow extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.12),
+                    color: Colors.orange.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Row(

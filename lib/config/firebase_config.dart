@@ -17,12 +17,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
       const details = NotificationDetails(android: androidDetails);
       final plugin = FlutterLocalNotificationsPlugin();
       const androidInit = AndroidInitializationSettings('@mipmap/launcher_icon');
-      await plugin.initialize(const InitializationSettings(android: androidInit));
+      await plugin.initialize(settings: const InitializationSettings(android: androidInit));
       await plugin.show(
-        message.messageId.hashCode,
-        message.notification?.title ?? 'Nouveau message',
-        message.notification?.body ?? message.data['body']?.toString() ?? 'Vous avez un nouveau message',
-        details,
+        id: message.messageId.hashCode,
+        title: message.notification?.title ?? 'Nouveau message',
+        body: message.notification?.body ?? message.data['body']?.toString() ?? 'Vous avez un nouveau message',
+        notificationDetails: details,
         payload: message.data['conversationId']?.toString() ?? message.data['conversation_id']?.toString() ?? '',
       );
     } catch (_) {}
@@ -91,12 +91,12 @@ class FirebaseConfig {
           const details = NotificationDetails(android: androidDetails);
           final plugin = FlutterLocalNotificationsPlugin();
           const androidInit = AndroidInitializationSettings('@mipmap/launcher_icon');
-          await plugin.initialize(const InitializationSettings(android: androidInit));
+          await plugin.initialize(settings: const InitializationSettings(android: androidInit));
           await plugin.show(
-            message.messageId.hashCode,
-            message.notification?.title ?? 'Nouveau message',
-            message.notification?.body ?? 'Vous avez un nouveau message',
-            details,
+            id: message.messageId.hashCode,
+            title: message.notification?.title ?? 'Nouveau message',
+            body: message.notification?.body ?? 'Vous avez un nouveau message',
+            notificationDetails: details,
             payload: message.data['conversationId']?.toString() ?? '',
           );
         } catch (e) {

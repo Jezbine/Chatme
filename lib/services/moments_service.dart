@@ -122,16 +122,16 @@ class MomentsService extends GetxService {
       if (!await file.exists()) return null;
       final bytes = await file.readAsBytes();
       final ext = localPath.split('.').last.toLowerCase();
-      final mime = ext == 'png' ? 'image/png' : ext == 'mp4' ? 'video/mp4' : 'image/jpeg';
+      final mime = ext == 'png' ? 'image/png' : ext == 'mp4' ? 'video/mp4' : ext == 'webp' ? 'image/webp' : 'image/jpeg';
       final fileName = '${DateTime.now().millisecondsSinceEpoch}.$ext';
       final storagePath = '$uid/moment_$fileName';
-      // Utiliser le bucket chat-media qui existe déja avec ses policies RLS
       final bucket = 'chat-media';
       await client.storage.from(bucket).uploadBinary(storagePath, bytes, fileOptions: FileOptions(contentType: mime, upsert: true));
+      // Robustesse public/privé : privilégie signed 365j (marche dans les 2 cas)
       try {
-        return client.storage.from(bucket).getPublicUrl(storagePath);
+        return await client.storage.from(bucket).createSignedUrl(storagePath, 60 * 60 * 24 * 365);
       } catch (_) {
-        return await client.storage.from(bucket).createSignedUrl(storagePath, 60 * 60 * 24 * 30);
+        return client.storage.from(bucket).getPublicUrl(storagePath);
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[Moments] _uploadMomentMedia error: $e');
@@ -144,11 +144,21 @@ class MomentsService extends GetxService {
       final client = Supabase.instance.client;
       final uid = client.auth.currentUser?.id;
       // Récupère moments avec profil, likes et commentaires
-      final rows = await client
-          .from('moments')
-          .select('id, user_id, text, photo_path, likes_count, created_at, updated_at, profiles!moments_user_id_fkey(display_name)')
-          .order('created_at', ascending: false)
-          .limit(50);
+      // Schéma compatible : tente d'abord nouveau schéma (BLOQUANTS: content,image_url), fallback ancien (text,photo_path)
+      dynamic rows;
+      try {
+        rows = await client
+            .from('moments')
+            .select('id, user_id, text, photo_path, likes_count, created_at, updated_at, profiles!moments_user_id_fkey(display_name)')
+            .order('created_at', ascending: false)
+            .limit(50);
+      } catch (_) {
+        rows = await client
+            .from('moments')
+            .select('id, user_id, content, image_url, created_at, profiles!moments_user_id_fkey(display_name)')
+            .order('created_at', ascending: false)
+            .limit(50);
+      }
       final List<Moment> fetched = [];
       for (final r in rows as List) {
         final m = r as Map<String, dynamic>;
@@ -183,8 +193,8 @@ class MomentsService extends GetxService {
           initials: initials,
           colorValue: 0xFF3C3489,
           time: timeAgo,
-          text: m['text'] as String? ?? '',
-          photoPath: m['photo_path'] as String?,
+          text: (m['text'] as String?) ?? (m['content'] as String?) ?? '',
+          photoPath: (m['photo_path'] as String?) ?? (m['image_url'] as String?),
           likes: likes,
           liked: liked,
           comments: comments,
@@ -308,7 +318,13 @@ class MomentsService extends GetxService {
         final client = Supabase.instance.client;
         final uid = client.auth.currentUser?.id;
         if (uid != null) {
-          final row = await client.from('moments').insert({'user_id': uid, 'text': text, 'photo_path': remotePhoto}).select().single();
+          // Essayer schéma récent (text/photo_path), fallback ancien (content/image_url)
+          Map<String, dynamic> row;
+          try {
+            row = await client.from('moments').insert({'user_id': uid, 'text': text, 'photo_path': remotePhoto}).select().single();
+          } catch (_) {
+            row = await client.from('moments').insert({'user_id': uid, 'content': text, 'image_url': remotePhoto}).select().single();
+          }
           moments.insert(0, Moment(id: row['id'] as String, name: resolvedName, initials: resolvedInitials, colorValue: resolvedColor, time: "à l'instant", text: text, photoPath: remotePhoto, likes: 0, liked: false, comments: const []));
           await _persist();
           return;
@@ -346,16 +362,41 @@ class MomentsService extends GetxService {
     if (kDebugMode) debugPrint('[Moments] repost $originalId');
   }
 
-  void deleteMoment(String id) {
+  // WeChat Moments : suppression propriétaire, RLS user_id = auth.uid()
+  Future<void> deleteMoment(String id) async {
     moments.removeWhere((m) => m.id == id);
-    _persist();
+    await _persist();
+    if (_supabaseAvailable) {
+      try {
+        final uid = Supabase.instance.client.auth.currentUser?.id;
+        if (uid != null) {
+          await Supabase.instance.client.from('moments').delete().eq('id', id).eq('user_id', uid);
+        } else {
+          await Supabase.instance.client.from('moments').delete().eq('id', id);
+        }
+      } catch (e) {
+        if (kDebugMode) debugPrint('[Moments] deleteMoment supabase error: $e');
+      }
+    }
   }
 
-  void updateMoment(String id, String newText) {
+  Future<void> updateMoment(String id, String newText) async {
     final i = moments.indexWhere((m) => m.id == id);
     if (i == -1) return;
     moments[i] = moments[i].copyWith(text: newText);
-    _persist();
+    await _persist();
+    if (_supabaseAvailable) {
+      try {
+        // Gère les 2 schémas (text/photo_path vs content/image_url)
+        try {
+          await Supabase.instance.client.from('moments').update({'text': newText}).eq('id', id);
+        } catch (_) {
+          await Supabase.instance.client.from('moments').update({'content': newText}).eq('id', id);
+        }
+      } catch (e) {
+        if (kDebugMode) debugPrint('[Moments] updateMoment error: $e');
+      }
+    }
   }
 }
 

@@ -583,6 +583,7 @@ class AuthService extends GetxService with WidgetsBindingObserver {
   }
 
   /// **Mise à jour profil**
+  /// Référence originale Meta/WeChat : avatarUrl == null -> inchangé, '' -> suppression (null en DB)
   Future<bool> updateProfile({
     String? displayName,
     String? bio,
@@ -596,7 +597,10 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       final updates = <String, dynamic>{};
       if (displayName != null) updates['display_name'] = displayName;
       if (bio != null) updates['bio'] = bio;
-      if (avatarUrl != null) updates['avatar_url'] = avatarUrl;
+      if (avatarUrl != null) {
+        // '' = suppression -> null en DB (Meta/WeChat : retirer photo)
+        updates['avatar_url'] = avatarUrl.isEmpty ? null : avatarUrl;
+      }
       updates['updated_at'] = DateTime.now().toIso8601String();
 
       await _client
@@ -605,12 +609,45 @@ class AuthService extends GetxService with WidgetsBindingObserver {
           .eq('id', currentUser.value!.id)
           .timeout(const Duration(seconds: 10));
 
-      currentUser.value = currentUser.value!.copyWith(
-        displayName: displayName,
-        bio: bio,
-        avatarUrl: avatarUrl,
+      // Reconstruction explicite pour gérer la suppression (copyWith ne peut pas mettre null)
+      final old = currentUser.value!;
+      String? newAvatar;
+      if (avatarUrl == null) {
+        newAvatar = old.avatarUrl;
+      } else if (avatarUrl.isEmpty) {
+        newAvatar = null;
+      } else {
+        newAvatar = avatarUrl;
+      }
+      currentUser.value = UserProfile(
+        id: old.id,
+        phoneNumber: old.phoneNumber,
+        email: old.email,
+        displayName: displayName ?? old.displayName,
+        avatarUrl: newAvatar,
+        bio: bio ?? old.bio,
+        fcmToken: old.fcmToken,
+        isOnline: old.isOnline,
+        lastSeen: old.lastSeen,
+        createdAt: old.createdAt,
+        updatedAt: DateTime.now(),
+        emailConfirmedAt: old.emailConfirmedAt,
       );
-      if (avatarUrl != null) await _cacheProfile(currentUser.value!);
+      await _cacheProfile(currentUser.value!);
+      // Rafraîchir depuis Supabase pour garantir cohérence (évite cache stale)
+      try {
+        final fresh = await _client.from('profiles').select().eq('id', old.id).maybeSingle();
+        if (fresh != null) {
+          final user = _client.auth.currentUser;
+          final profile = UserProfile.fromJson({
+            ...fresh,
+            'email': user?.email ?? fresh['email'],
+            'email_confirmed_at': user?.emailConfirmedAt,
+          });
+          currentUser.value = profile;
+          await _cacheProfile(profile);
+        }
+      } catch (_) {}
 
       isLoading.value = false;
       return true;
@@ -626,10 +663,12 @@ class AuthService extends GetxService with WidgetsBindingObserver {
   }
 
   /// Upload photo de profil -> Supabase Storage (chat-media) + update profiles.avatar_url
+  /// Fix Meta/WeChat : avatar persistant (public si possible, sinon signed longue durée 1 an)
   Future<bool> updateAvatar(String localPath) async {
     final uid = _client.auth.currentUser?.id;
     if (uid == null || currentUser.value == null) return false;
     isLoading.value = true;
+    errorMessage.value = '';
     try {
       final file = File(localPath);
       if (!await file.exists()) {
@@ -639,24 +678,36 @@ class AuthService extends GetxService with WidgetsBindingObserver {
       }
       final bytes = await file.readAsBytes();
       final ext = localPath.split('.').last.toLowerCase();
-      final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
+      final mime = ext == 'png' ? 'image/png' : (ext == 'webp' ? 'image/webp' : 'image/jpeg');
       final fileName = '${DateTime.now().millisecondsSinceEpoch}.$ext';
       final storagePath = '$uid/avatar_$fileName';
 
-      // Utiliser le bucket chat-media qui existe déja avec ses policies RLS
       final bucket = 'chat-media';
       await _client.storage.from(bucket).uploadBinary(storagePath, bytes, fileOptions: FileOptions(contentType: mime, upsert: true));
+      // Stratégie robuste : bucket peut être public (ALL_FIXES) ou privé (SUPABASE_BLOQUANTS_FIX)
+      // On privilégie la signedUrl longue durée (365j) qui fonctionne dans les 2 cas et évite le 400 public sur bucket privé.
       String url;
       try {
-        url = _client.storage.from(bucket).getPublicUrl(storagePath);
-      } catch (_) {
         url = await _client.storage.from(bucket).createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+      } catch (_) {
+        // Fallback public (si signed non supporté / bucket public)
+        url = _client.storage.from(bucket).getPublicUrl(storagePath);
       }
+      if (kDebugMode) debugPrint('[Auth] avatar upload ok -> $storagePath url len ${url.length}');
       final ok = await updateProfile(avatarUrl: url);
-      isLoading.value = false;
+      // updateProfile gère déjà isLoading=false
+      if (!ok) isLoading.value = false;
       return ok;
     } catch (e) {
-      errorMessage.value = 'Photo non envoyée: $e';
+      final msg = e.toString();
+      if (msg.contains('Bucket not found')) {
+        errorMessage.value = 'Stockage non configuré (bucket chat-media manquant). Exécutez supabase/ALL_FIXES.sql';
+      } else if (msg.contains('row-level security') || msg.contains('violates row-level')) {
+        errorMessage.value = 'Permission refusée (RLS profiles). Exécutez supabase/SUPABASE_BLOQUANTS_FIX.sql';
+      } else {
+        errorMessage.value = 'Photo non envoyée: $e';
+      }
+      if (kDebugMode) debugPrint('[Auth] updateAvatar error: $e');
       isLoading.value = false;
       return false;
     }

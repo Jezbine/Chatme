@@ -50,7 +50,7 @@ class HeaderIconButton extends StatelessWidget {
         height: 34,
         margin: const EdgeInsets.only(left: 12),
         decoration: BoxDecoration(
-          color: cs.primary.withOpacity(0.12),
+          color: cs.primary.withValues(alpha: 0.12),
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: cs.primary, size: 18),

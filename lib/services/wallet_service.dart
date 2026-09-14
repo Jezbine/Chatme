@@ -332,8 +332,8 @@ class WalletService extends GetxService {
         );
       }
 
-      if (res == null || !res.isSuccessful || res.data == null) {
-        throw Exception('createTransaction failed (code ${res?.statusCode})');
+      if (!res.isSuccessful || res.data == null) {
+        throw Exception('createTransaction failed (code ${res.statusCode})');
       }
       final txId = res.data!.id;
       String? url = res.data!.paymentUrl;
@@ -482,7 +482,7 @@ class WalletService extends GetxService {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: ChatMeColors.violet.withOpacity(0.1),
+                    color: ChatMeColors.violet.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const SizedBox(

@@ -16,11 +16,11 @@ class ContactRequestsScreen extends StatelessWidget {
         final outgoing = cs.outgoingRequests;
         if (incoming.isEmpty && outgoing.isEmpty) {
           return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.person_add_outlined, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5)),
+            Icon(Icons.person_add_outlined, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
             const SizedBox(height: 12),
             Text('Aucune demande', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
             const SizedBox(height: 4),
-            Text('Scannez le QR d\'un ami pour lui envoyer une demande', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7))),
+            Text('Scannez le QR d\'un ami pour lui envoyer une demande', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7))),
           ]));
         }
         return ListView(

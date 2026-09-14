@@ -31,7 +31,7 @@ class NotificationService extends GetxService {
     const initSettings = InitializationSettings(android: androidInit, iOS: iosInit);
 
     await _plugin.initialize(
-      initSettings,
+      settings: initSettings,
       onDidReceiveNotificationResponse: _onTap,
     );
 
@@ -131,17 +131,17 @@ class NotificationService extends GetxService {
     const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
 
     await _plugin.show(
-      conversationId.hashCode,
-      title,
-      body,
-      details,
+      id: conversationId.hashCode,
+      title: title,
+      body: body,
+      notificationDetails: details,
       payload: conversationId,
     );
     if (kDebugMode) debugPrint('[Notification] affichée $title -> $conversationId');
   }
 
   Future<void> cancelForConversation(String convId) async {
-    await _plugin.cancel(convId.hashCode);
+    await _plugin.cancel(id: convId.hashCode);
   }
 
   Future<void> cancelAll() async {

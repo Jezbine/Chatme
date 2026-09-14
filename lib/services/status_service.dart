@@ -198,17 +198,16 @@ class StatusService extends GetxService {
       final bytes = await file.readAsBytes();
       final ext = localPath.split('.').last.toLowerCase();
       final isVideo = ['mp4', 'mov', 'avi', 'mkv', 'webm'].contains(ext);
-      final mime = isVideo ? 'video/$ext' : (ext == 'png' ? 'image/png' : 'image/jpeg');
+      final mime = isVideo ? 'video/$ext' : (ext == 'png' ? 'image/png' : ext == 'webp' ? 'image/webp' : 'image/jpeg');
       final fileName = '${DateTime.now().millisecondsSinceEpoch}.$ext';
       final storagePath = '$uid/status_$fileName';
-      // Utiliser le bucket chat-media qui existe déja avec ses policies RLS
       final bucket = 'chat-media';
       await client.storage.from(bucket).uploadBinary(storagePath, bytes, fileOptions: FileOptions(contentType: mime, upsert: true));
-      // URL publique si possible, sinon signée 30 jours
+      // Robustesse : signed 1 an prioritaire (marche public + privé)
       try {
-        return client.storage.from(bucket).getPublicUrl(storagePath);
+        return await client.storage.from(bucket).createSignedUrl(storagePath, 60 * 60 * 24 * 365);
       } catch (_) {
-        return await client.storage.from(bucket).createSignedUrl(storagePath, 60 * 60 * 24 * 30);
+        return client.storage.from(bucket).getPublicUrl(storagePath);
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[Status] _uploadStatusMedia error: $e');
@@ -223,20 +222,41 @@ class StatusService extends GetxService {
       final uploaded = await _uploadStatusMedia(mediaPath);
       if (uploaded != null) remoteMediaPath = uploaded;
     }
+    // DB peut être ancienne (check text/image) ou nouvelle avec video — on tente type réel puis fallback image
+    String dbType = type;
+    // Si DB ancienne sans video, l'insert échouera et on retry avec image (voir catch ci-dessous)
     if (_supabaseAvailable) {
       try {
         final client = SupabaseConfig.client;
         final uid = client.auth.currentUser?.id;
         if (uid != null) {
           final now = DateTime.now();
-          final row = await client.from('statuses').insert({
-            'user_id': uid,
-            'type': type,
-            'text': text,
-            'media_path': remoteMediaPath,
-            'duration_minutes': durationMinutes,
-            'expires_at': now.add(Duration(minutes: durationMinutes)).toIso8601String(),
-          }).select().single();
+          Map<String, dynamic>? row;
+          try {
+            row = await client.from('statuses').insert({
+              'user_id': uid,
+              'type': dbType,
+              'text': text,
+              'media_path': remoteMediaPath,
+              'duration_minutes': durationMinutes,
+              'expires_at': now.add(Duration(minutes: durationMinutes)).toIso8601String(),
+            }).select().single();
+          } catch (e) {
+            // Fallback si DB ancienne n'autorise pas video (check text/image)
+            if (dbType == 'video' && e.toString().contains('check')) {
+              if (kDebugMode) debugPrint('[Status] video type non supporté DB, fallback image');
+              row = await client.from('statuses').insert({
+                'user_id': uid,
+                'type': 'image',
+                'text': text,
+                'media_path': remoteMediaPath,
+                'duration_minutes': durationMinutes,
+                'expires_at': now.add(Duration(minutes: durationMinutes)).toIso8601String(),
+              }).select().single();
+            } else {
+              rethrow;
+            }
+          }
           myStatuses.insert(0, StatusItem(id: row['id'] as String, type: type, text: text, mediaPath: remoteMediaPath, durationMinutes: durationMinutes, createdAt: DateTime.parse(row['created_at'] as String), expiresAt: DateTime.parse(row['expires_at'] as String)));
           await _persist();
           return;
@@ -267,7 +287,10 @@ class StatusService extends GetxService {
 
   void editMyStatus(String id, {String? text, int? durationMinutes}) {
     final idx = myStatuses.indexWhere((s) => s.id == id);
-    if (idx == -1) return;
+    if (idx == -1) {
+      if (kDebugMode) debugPrint('[Status] editMyStatus bloqué — id=$id non trouvé dans mes statuts');
+      return;
+    }
     final s = myStatuses[idx];
     if (!canEditMyStatus(s)) return;
     final minutes = durationMinutes ?? s.durationMinutes;
@@ -281,13 +304,37 @@ class StatusService extends GetxService {
       expiresAt: s.createdAt.add(Duration(minutes: minutes)),
     );
     _persist();
+    // Persistance Supabase si disponible — RLS garantit que seul le propriétaire peut mettre à jour
+    if (_supabaseAvailable) {
+      SupabaseConfig.client.from('statuses').update({
+        'text': text ?? s.text,
+        'duration_minutes': minutes,
+        'expires_at': s.createdAt.add(Duration(minutes: minutes)).toIso8601String(),
+      }).eq('id', id).eq('user_id', SupabaseConfig.client.auth.currentUser?.id ?? '').then((_) {
+        if (kDebugMode) debugPrint('[Status] editMyStatus Supabase update ok id=$id');
+      }).catchError((e) {
+        if (kDebugMode) debugPrint('[Status] editMyStatus Supabase error: $e');
+      });
+    }
   }
 
-  /// Suppression sans délai (pour moi).
+  /// Suppression sans délai (pour moi) — seul le propriétaire peut supprimer.
   Future<void> deleteMyStatus(String id) async {
+    // Vérification locale : le statut doit appartenir à mes statuts
+    final isMine = myStatuses.any((s) => s.id == id);
+    if (!isMine) {
+      if (kDebugMode) debugPrint('[Status] deleteMyStatus bloqué — id=$id n\'appartient pas à l\'utilisateur courant');
+      return;
+    }
     if (_supabaseAvailable) {
       try {
-        await SupabaseConfig.client.from('statuses').delete().eq('id', id);
+        final uid = SupabaseConfig.client.auth.currentUser?.id;
+        // RLS + filtre user_id pour éviter toute suppression d'autrui même si RLS était mal configuré
+        if (uid != null) {
+          await SupabaseConfig.client.from('statuses').delete().eq('id', id).eq('user_id', uid);
+        } else {
+          await SupabaseConfig.client.from('statuses').delete().eq('id', id);
+        }
       } catch (e) {
         if (kDebugMode) debugPrint('[Status] deleteMyStatus Supabase error: $e');
       }
@@ -296,13 +343,15 @@ class StatusService extends GetxService {
     await _persist();
   }
 
-  /// Suppression d'un statut de contact (pour tout le monde, côté local).
+  /// Consultation seule : les statuts des contacts sont en lecture seule.
+  /// La suppression/modification d'un statut d'autrui est interdite (RLS + logique métier).
+  /// Cette méthode est conservée pour compatibilité mais ne fait plus rien.
+  @Deprecated('Lecture seule : suppression des statuts d\'autrui interdite')
   void deleteContactStatus(String contactId, String statusId) {
-    final idx = contacts.indexWhere((c) => c.id == contactId);
-    if (idx == -1) return;
-    contacts[idx].items.removeWhere((i) => i.id == statusId);
-    if (!contacts[idx].hasActive) contacts.removeAt(idx);
-    _persist();
+    if (kDebugMode) debugPrint('[Status] deleteContactStatus bloqué — consultation seule (contact=$contactId, status=$statusId)');
+    // Interdit : on ne supprime jamais le statut d'un autre utilisateur, même localement.
+    // Les statuts des contacts sont en lecture seule jusqu'à expiration (expires_at).
+    return;
   }
 
   Future<void> _deleteExpiredFromSupabase() async {

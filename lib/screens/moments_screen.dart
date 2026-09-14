@@ -108,17 +108,17 @@ class _MomentCardState extends State<_MomentCard> {
               ),
               const Spacer(),
               PopupMenuButton<String>(
-                onSelected: (v) {
+                onSelected: (v) async {
                   if (v == 'delete') {
                     Get.dialog(AlertDialog(
                       title: Text('Supprimer ?', style: TextStyle(color: cs.onSurface)),
-                      content: Text('Voulez-vous supprimer ce moment ?', style: TextStyle(color: cs.onSurface)),
+                      content: Text('Voulez-vous supprimer ce moment ? (comme WeChat/Instagram)', style: TextStyle(color: cs.onSurface)),
                       actions: [
                         TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
                         TextButton(
-                            onPressed: () {
+                            onPressed: () async {
                               Get.back();
-                              MomentsService.to.deleteMoment(m.id);
+                              await MomentsService.to.deleteMoment(m.id);
                               Get.snackbar('Moments', 'Moment supprimé', snackPosition: SnackPosition.BOTTOM);
                             },
                             child: const Text('Supprimer', style: TextStyle(color: Colors.red))),
@@ -135,9 +135,9 @@ class _MomentCardState extends State<_MomentCard> {
                       actions: [
                         TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
                         ElevatedButton(
-                            onPressed: () {
+                            onPressed: () async {
                               final t = ctrl.text.trim();
-                              if (t.isNotEmpty) MomentsService.to.updateMoment(m.id, t);
+                              if (t.isNotEmpty) await MomentsService.to.updateMoment(m.id, t);
                               Get.back();
                             },
                             child: const Text('Enregistrer')),

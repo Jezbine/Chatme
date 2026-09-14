@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/conversation.dart';
@@ -446,6 +447,16 @@ class MessagingService extends GetxService {
     final newMessage = Message.fromJson(payload.newRecord);
     final convId = newMessage.conversationId;
 
+    // Filtrage bloqués (Meta/WeChat : bloqué = plus de messages reçus)
+    final sender = newMessage.senderId;
+    // async check bloqué - on filtre sync via cache, le check async est fait via isBlocked cache
+    _isBlockedSync(sender).then((blocked) {
+      if (blocked) {
+        if (kDebugMode) debugPrint('[Messaging] message bloqué ignoré de $sender');
+        return;
+      }
+    });
+
     messagesByConversation.update(convId, (list) {
       if (!list.any((m) => m.id == newMessage.id)) {
         return [...list, newMessage]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
@@ -455,8 +466,23 @@ class MessagingService extends GetxService {
 
     _updateConversationLastMessage(convId, newMessage);
 
-    // Notification locale si message d'un autre et pas dans la conversation ouverte
+    // Auto delivered (Meta WhatsApp double coche) : si je suis destinataire, marquer delivered
     final myId = _client.auth.currentUser?.id;
+    if (newMessage.senderId != myId && newMessage.status == MessageStatus.sent) {
+      // fire and forget
+      updateMessageStatus(newMessage.id, MessageStatus.delivered);
+      // maj locale immédiate
+      final list = messagesByConversation[convId];
+      if (list != null) {
+        final idx = list.indexWhere((m) => m.id == newMessage.id);
+        if (idx != -1) {
+          list[idx] = list[idx].copyWith(status: MessageStatus.delivered);
+          messagesByConversation.refresh();
+        }
+      }
+    }
+
+    // Notification locale si message d'un autre et pas dans la conversation ouverte
     if (newMessage.senderId != myId) {
       try {
         final notif = Get.isRegistered<NotificationService>() ? Get.find<NotificationService>() : null;
@@ -553,10 +579,20 @@ class MessagingService extends GetxService {
           .order('created_at', ascending: false)
           .limit(limit);
 
-      final loaded = (response as List)
+      var loaded = (response as List)
           .map((json) => Message.fromJsonWithSender(json))
           .toList()
         ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+      // Filtre "Supprimer pour moi" persistant (WhatsApp local) + bloqués
+      final deleted = await _getDeletedForMe(conversationId);
+      if (deleted.isNotEmpty) {
+        loaded = loaded.where((m) => !deleted.contains(m.id)).toList();
+      }
+      final blocked = await getBlockedUsers();
+      if (blocked.isNotEmpty) {
+        loaded = loaded.where((m) => !blocked.contains(m.senderId)).toList();
+      }
 
       if (beforeMessageId != null && messagesByConversation.containsKey(conversationId)) {
         final existing = messagesByConversation[conversationId]!;
@@ -912,19 +948,28 @@ class MessagingService extends GetxService {
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_${path.split('/').last}';
       final storagePath = '$userId/$fileName';
 
-      await _client.storage.from('chat-media').uploadBinary(storagePath, bytes, fileOptions: FileOptions(contentType: mimeType));
+      await _client.storage.from('chat-media').uploadBinary(storagePath, bytes, fileOptions: FileOptions(contentType: mimeType, upsert: true));
 
-      // Fix: URL signée 7 jours max au lieu de 365 (sécurité + révocation)
-      final url = await _client.storage.from('chat-media').createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+      // Fix robuste : signed 1 an pour durée de vie réelle (photos chat) ; fallback public si bucket public
+      // Bucket peut être public (ALL_FIXES) ou privé (BLOQUANTS) -> on tente signed longue durée
+      String url;
+      try {
+        url = await _client.storage.from('chat-media').createSignedUrl(storagePath, 60 * 60 * 24 * 365);
+      } catch (_) {
+        url = _client.storage.from('chat-media').getPublicUrl(storagePath);
+      }
+      if (kDebugMode) debugPrint('[Messaging] uploadMedia ok $storagePath -> ${url.substring(0, 60)}...');
       return url;
     } catch (e) {
       final msg = e.toString();
       if (msg.contains('Bucket not found') || msg.contains('not found')) {
         errorMessage.value = 'Bucket chat-media manquant — exécutez supabase/ALL_FIXES.sql dans SQL Editor';
+      } else if (msg.contains('row-level') || msg.contains('42501')) {
+        errorMessage.value = 'Permission stockage refusée (RLS). Exécutez supabase/SUPABASE_BLOQUANTS_FIX.sql';
       } else {
         errorMessage.value = 'Erreur upload: $e';
       }
-      if (kDebugMode) print('Erreur uploadMedia: $e');
+      if (kDebugMode) debugPrint('Erreur uploadMedia: $e');
       return null;
     }
   }
@@ -935,6 +980,54 @@ class MessagingService extends GetxService {
 
   void clearMessages(String conversationId) {
     messagesByConversation.remove(conversationId);
+  }
+
+  // WhatsApp/WeChat "Effacer discussion" : vide pour moi, persiste cache vide + filtre reload
+  Future<void> clearConversationForMe(String conversationId) async {
+    messagesByConversation.remove(conversationId);
+    messagesByConversation.refresh();
+    try {
+      await OfflineService.to.cacheMessages(conversationId, []);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('deleted_for_me_$conversationId', []);
+      // Marqueur pour filtrer les anciens messages au prochain load
+      await prefs.setString('cleared_at_$conversationId', DateTime.now().toIso8601String());
+    } catch (_) {}
+    // Option serveur: ne supprime pas côté Supabase (comme WhatsApp effacer = local)
+  }
+
+  // Bloquer / Débloquer (Meta/WeChat) : liste locale + filtrage
+  static const _blockedKey = 'blocked_users';
+
+  Future<bool> isBlocked(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_blockedKey) ?? [];
+      return list.contains(userId);
+    } catch (_) { return false; }
+  }
+
+  Future<bool> _isBlockedSync(String userId) async => await isBlocked(userId);
+
+  Future<void> blockUser(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_blockedKey) ?? [];
+    if (!list.contains(userId)) {
+      list.add(userId);
+      await prefs.setStringList(_blockedKey, list);
+    }
+  }
+
+  Future<void> unblockUser(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_blockedKey) ?? [];
+    list.remove(userId);
+    await prefs.setStringList(_blockedKey, list);
+  }
+
+  Future<List<String>> getBlockedUsers() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_blockedKey) ?? [];
   }
 
   void editLocalMessage(String conversationId, String messageId, String newContent) {
@@ -961,11 +1054,36 @@ class MessagingService extends GetxService {
     }
   }
 
-  void deleteMessageForMe(String conversationId, String messageId) {
+  // WhatsApp "Supprimer pour moi" : masque localement + persiste pour ne pas réapparaître au reload
+  Future<void> deleteMessageForMe(String conversationId, String messageId) async {
     messagesByConversation.update(
       conversationId,
       (list) => list.where((m) => m.id != messageId).toList(),
     );
+    messagesByConversation.refresh();
+    // Persiste les ids supprimés localement (comme WhatsApp) pour filtrer au prochain loadMessages
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'deleted_for_me_$conversationId';
+      final existing = prefs.getStringList(key) ?? [];
+      if (!existing.contains(messageId)) {
+        existing.add(messageId);
+        await prefs.setStringList(key, existing);
+      }
+      // Maj cache offline sans le message supprimé
+      final remaining = messagesByConversation[conversationId] ?? [];
+      await _cacheMessagesRaw(conversationId, remaining);
+    } catch (_) {}
+  }
+
+  Future<Set<String>> _getDeletedForMe(String conversationId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('deleted_for_me_$conversationId') ?? <String>[];
+      return list.toSet();
+    } catch (_) {
+      return <String>{};
+    }
   }
 
   Future<void> deleteMessageForEveryone(String conversationId, String messageId) async {

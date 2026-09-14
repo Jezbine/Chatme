@@ -55,7 +55,7 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
               margin: const EdgeInsets.symmetric(horizontal: 20),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: cs.primary.withOpacity(0.10),
+                color: cs.primary.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
@@ -158,7 +158,7 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
       final tiles = <Widget>[
         _StatusAvatar(
           initials: myInitials,
-          colorValue: ChatMeColors.violet.value,
+          colorValue: ChatMeColors.violet.toARGB32(),
           viewed: myActive.isEmpty,
           label: 'Mon statut',
           onTap: () {
@@ -166,7 +166,7 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
               Get.to(() => StatusViewerScreen(
                     name: 'Mon statut',
                     initials: myInitials,
-                    colorValue: ChatMeColors.violet.value,
+                    colorValue: ChatMeColors.violet.toARGB32(),
                     items: myActive,
                     isMine: true,
                   ));
@@ -216,7 +216,7 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant)),
           const SizedBox(height: 8),
           Text('Appuyez sur + pour commencer une discussion',
-              style: TextStyle(color: cs.onSurfaceVariant.withOpacity(0.7))),
+              style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.7))),
         ],
       ),
     );
@@ -224,7 +224,6 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
 
   Widget _buildConversationTile(BuildContext context, Conversation conv) {
     final cs = Theme.of(context).colorScheme;
-    final messaging = Get.find<MessagingService>();
     final currentUserId = Get.find<AuthService>().currentUser.value?.id ?? '';
     final other = conv.participants.firstWhere(
       (p) => p.userId != currentUserId,
@@ -248,25 +247,34 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Row(
           children: [
-            // Avatar : photo si disponible, sinon initiales
+            // Avatar : photo si disponible, sinon initiales (Meta/WeChat style avec fallback erreur)
             Container(
               width: 48,
               height: 48,
               decoration: BoxDecoration(
                 color: cs.primary,
                 borderRadius: BorderRadius.circular(14),
-                image: other.profile?.avatarUrl != null && other.profile!.avatarUrl!.isNotEmpty
-                    ? DecorationImage(image: NetworkImage(other.profile!.avatarUrl!), fit: BoxFit.cover)
-                    : null,
               ),
-              child: other.profile?.avatarUrl == null || other.profile!.avatarUrl!.isEmpty
-                  ? Center(
+              clipBehavior: Clip.antiAlias,
+              child: (other.profile?.avatarUrl != null && other.profile!.avatarUrl!.isNotEmpty)
+                  ? Image.network(
+                      other.profile!.avatarUrl!,
+                      fit: BoxFit.cover,
+                      width: 48,
+                      height: 48,
+                      errorBuilder: (_, __, ___) => Center(
+                        child: Text(
+                          other.profile?.initials ?? '?',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    )
+                  : Center(
                       child: Text(
                         other.profile?.initials ?? '?',
                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                       ),
-                    )
-                  : null,
+                    ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -380,7 +388,7 @@ class _StatusAvatar extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.all(3),
                     child: CircleAvatar(
-                      backgroundColor: Color(colorValue).withOpacity(0.15),
+                      backgroundColor: Color(colorValue).withValues(alpha: 0.15),
                       child: Text(initials,
                           style: TextStyle(color: Color(colorValue), fontWeight: FontWeight.w600)),
                     ),

@@ -131,7 +131,7 @@ class ChatMeTheme {
           surfaceTintColor: ChatMeColors.appBarBg,
           systemOverlayStyle: SystemUiOverlayStyle.dark, // icônes sombres sur clair §2
         ),
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           color: ChatMeColors.cardBg,
           surfaceTintColor: ChatMeColors.cardBg,
           elevation: 2, // ombre en clair §4
@@ -186,7 +186,7 @@ class ChatMeTheme {
           selectedItemColor: ChatMeColors.violet,
           unselectedItemColor: ChatMeColors.inkSoft,
         ),
-        dialogTheme: DialogTheme(
+        dialogTheme: DialogThemeData(
           backgroundColor: ChatMeColors.bg,
           surfaceTintColor: ChatMeColors.bg,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -241,7 +241,7 @@ class ChatMeTheme {
           surfaceTintColor: ChatMeColors.darkAppBarBg,
           systemOverlayStyle: SystemUiOverlayStyle.light, // icônes claires sur sombre §3
         ),
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           color: ChatMeColors.darkCardBg,
           surfaceTintColor: ChatMeColors.darkCardBg,
           elevation: 0, // pas d'ombre en sombre §4 -> bordure
@@ -295,7 +295,7 @@ class ChatMeTheme {
           selectedItemColor: ChatMeColors.darkPrimary,
           unselectedItemColor: ChatMeColors.darkInkSoft,
         ),
-        dialogTheme: DialogTheme(
+        dialogTheme: DialogThemeData(
           backgroundColor: ChatMeColors.darkSurface,
           surfaceTintColor: ChatMeColors.darkSurface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -317,7 +317,7 @@ class ChatMeTheme {
             return ChatMeColors.darkInkSoft;
           }),
           trackColor: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.selected)) return ChatMeColors.darkPrimary.withOpacity(0.5);
+            if (states.contains(WidgetState.selected)) return ChatMeColors.darkPrimary.withValues(alpha: 0.5);
             return ChatMeColors.darkBorder;
           }),
         ),

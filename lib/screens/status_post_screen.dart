@@ -19,7 +19,7 @@ class _StatusPostScreenState extends State<StatusPostScreen> {
   final ImagePicker _picker = ImagePicker();
   String _type = 'text';
   File? _photo;
-  int _duration = 1440; // 24 h par défaut
+  int _duration = 1440; // 24 h par défaut (Meta/WeChat : 24h)
   bool _custom = false;
 
   final List<Map<String, dynamic>> _presets = const [
@@ -28,6 +28,16 @@ class _StatusPostScreenState extends State<StatusPostScreen> {
     {'label': '1 heure', 'min': 60},
     {'label': '24 heures', 'min': 1440},
   ];
+
+  /// Durée effective personnalisable : 1 min -> 7 jours (10080 min) comme WeChat Moments
+  int get _effectiveDuration {
+    if (_custom) {
+      final v = int.tryParse(_customCtrl.text.trim());
+      if (v != null && v >= 1 && v <= 10080) return v;
+      return _duration;
+    }
+    return _duration;
+  }
 
   @override
   void dispose() {
@@ -65,9 +75,18 @@ class _StatusPostScreenState extends State<StatusPostScreen> {
   }
 
   void _publish() {
-    final duration = _custom
-        ? (int.tryParse(_customCtrl.text) ?? _duration)
-        : _duration;
+    int duration = _effectiveDuration;
+    // Validation personnalisée
+    if (_custom) {
+      final raw = _customCtrl.text.trim();
+      final parsed = int.tryParse(raw);
+      if (parsed == null || parsed < 1 || parsed > 10080) {
+        Get.snackbar('Durée invalide', 'Entrez entre 1 et 10080 minutes (7 jours max)',
+            snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.white, colorText: Colors.black);
+        return;
+      }
+      duration = parsed;
+    }
     final text = _textCtrl.text.trim();
 
     if ((_type == 'image' || _type == 'video') && _photo == null) {
@@ -96,8 +115,13 @@ class _StatusPostScreenState extends State<StatusPostScreen> {
 
   String _formatDuration(int min) {
     if (min < 60) return '$min min';
-    if (min < 1440) return '${min ~/ 60} h';
-    return '${min ~/ 1440} j';
+    if (min < 1440) return '${min ~/ 60} h${min % 60 == 0 ? '' : ' ${min % 60} min'}';
+    if (min % 1440 == 0) return '${min ~/ 1440} j';
+    final d = min ~/ 1440;
+    final h = (min % 1440) ~/ 60;
+    if (d > 0 && h > 0) return '${d}j ${h}h';
+    if (d > 0) return '${d}j';
+    return '${h}h';
   }
 
   @override
@@ -176,62 +200,65 @@ class _StatusPostScreenState extends State<StatusPostScreen> {
                 ),
               ),
             const SizedBox(height: 20),
-            const Text('DURÉE DE VISIBILITÉ',
+            const Text('DURÉE DE VISIBILITÉ  •  personnalisable',
                 style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: ChatMeColors.inkSoft)),
             const SizedBox(height: 10),
-            Column(
-              children: [
-                ..._presets.map((p) => Row(
-                      children: [
-                        Radio<int>(
-                          value: p['min'] as int,
-                          groupValue: _custom ? -1 : _duration,
-                          onChanged: (v) {
-                            if (v != null) {
-                              setState(() {
-                                _duration = v;
-                                _custom = false;
-                              });
-                            }
-                          },
-                          activeColor: ChatMeColors.violet,
+            RadioGroup<int>(
+              groupValue: _custom ? -1 : _duration,
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() {
+                  if (v == -1) {
+                    _custom = true;
+                  } else {
+                    _duration = v;
+                    _custom = false;
+                  }
+                });
+              },
+              child: Column(
+                children: [
+                  ..._presets.map((p) => Row(
+                        children: [
+                          Radio<int>(value: p['min'] as int),
+                          Text(p['label'] as String),
+                        ],
+                      )),
+                  Row(
+                    children: [
+                      const Radio<int>(value: -1),
+                      const Text('Personnalisé : '),
+                      SizedBox(
+                        width: 90,
+                        child: TextField(
+                          controller: _customCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            isCollapsed: true,
+                            hintText: 'ex: 120',
+                            contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            errorText: _custom && _customCtrl.text.trim().isNotEmpty && (int.tryParse(_customCtrl.text.trim()) == null || int.parse(_customCtrl.text.trim()) < 1 || int.parse(_customCtrl.text.trim()) > 10080) ? '1-10080' : null,
+                          ),
+                          onChanged: (_) => setState(() => _custom = true),
                         ),
-                        Text(p['label'] as String),
-                      ],
-                    )),
-                Row(
-                  children: [
-                    Radio<int>(
-                      value: -1,
-                      groupValue: _custom ? -1 : _duration,
-                      onChanged: (v) {
-                        if (v != null) {
-                          setState(() {
-                            _custom = true;
-                          });
-                        }
-                      },
-                      activeColor: ChatMeColors.violet,
-                    ),
-                    const Text('Personnalisé : '),
-                    SizedBox(
-                      width: 70,
-                      child: TextField(
-                        controller: _customCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          isCollapsed: true,
-                          hintText: 'min',
-                          contentPadding: EdgeInsets.symmetric(vertical: 6),
-                        ),
-                        onChanged: (_) => setState(() => _custom = true),
                       ),
-                    ),
-                    const Text(' min'),
-                  ],
-                ),
-              ],
+                      const SizedBox(width: 6),
+                      const Text('min  (1 → 10080)'),
+                    ],
+                  ),
+                ],
+              ),
             ),
+            if (_custom)
+              Padding(
+                padding: const EdgeInsets.only(left: 32, top: 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Max 7 jours — comme WeChat, défaut WhatsApp 24h',
+                      style: TextStyle(fontSize: 11, color: ChatMeColors.inkSoft)),
+                ),
+              ),
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.all(12),
@@ -240,7 +267,7 @@ class _StatusPostScreenState extends State<StatusPostScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                'Vos contacts pourront voir ce statut pendant ${_formatDuration(_custom ? (int.tryParse(_customCtrl.text) ?? _duration) : _duration)}.',
+                'Vos contacts pourront voir ce statut pendant ${_formatDuration(_effectiveDuration)}.',
                 style: const TextStyle(fontSize: 12.5, color: ChatMeColors.ink),
               ),
             ),

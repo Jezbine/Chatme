@@ -170,10 +170,22 @@ class ProfileScreen extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: cs.primary,
                       borderRadius: BorderRadius.circular(24),
-                      image: hasPhoto ? DecorationImage(image: NetworkImage(user.avatarUrl!), fit: BoxFit.cover) : null,
                     ),
+                    clipBehavior: Clip.antiAlias,
                     child: hasPhoto
-                        ? null
+                        ? Image.network(
+                            user.avatarUrl!,
+                            fit: BoxFit.cover,
+                            width: 84,
+                            height: 84,
+                            errorBuilder: (_, __, ___) => Center(
+                              child: Text(
+                                user.initials,
+                                style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            loadingBuilder: (ctx, child, progress) => progress == null ? child : const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                          )
                         : Center(
                             child: Text(
                               user.initials,
@@ -241,30 +253,59 @@ class ProfileScreen extends StatelessWidget {
               ListTile(leading: const Icon(Icons.photo_camera), title: const Text('Prendre une photo'), onTap: () async {
                 Get.back();
                 final cam = await Permission.camera.request();
-                if (!cam.isGranted) { Get.snackbar('Permission', 'Caméra refusée'); return; }
-                final f = await picker.pickImage(source: ImageSource.camera, imageQuality: 80, maxWidth: 800);
-                if (f != null) {
-                  final ok = await auth.updateAvatar(f.path);
-                  Get.snackbar(ok ? 'Photo mise à jour' : 'Erreur', ok ? 'Profil enregistré' : auth.errorMessage.value, snackPosition: SnackPosition.BOTTOM);
+                if (!cam.isGranted) { Get.snackbar('Permission', 'Caméra refusée - autorisez dans les paramètres', snackPosition: SnackPosition.BOTTOM); return; }
+                try {
+                  final f = await picker.pickImage(source: ImageSource.camera, imageQuality: 80, maxWidth: 1024);
+                  if (f != null) {
+                    Get.dialog(const Center(child: CircularProgressIndicator()), barrierDismissible: false);
+                    final ok = await auth.updateAvatar(f.path);
+                    if (Get.isDialogOpen == true) Get.back();
+                    Get.snackbar(ok ? 'Photo mise à jour' : 'Erreur', ok ? 'Profil enregistré' : auth.errorMessage.value, snackPosition: SnackPosition.BOTTOM, backgroundColor: ok ? cs.primary : Colors.white, colorText: ok ? Colors.white : Colors.black);
+                  }
+                } catch (e) {
+                  if (Get.isDialogOpen == true) Get.back();
+                  Get.snackbar('Erreur', 'Photo impossible: $e', snackPosition: SnackPosition.BOTTOM);
                 }
               }),
               ListTile(leading: const Icon(Icons.photo_library), title: const Text('Choisir dans la galerie'), onTap: () async {
                 Get.back();
-                final photos = await Permission.photos.request();
-                if (photos.isPermanentlyDenied) { Get.snackbar('Permission', 'Autorisez les photos'); }
-                final f = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80, maxWidth: 800);
-                if (f != null) {
-                  final ok = await auth.updateAvatar(f.path);
-                  Get.snackbar(ok ? 'Photo mise à jour' : 'Erreur', ok ? 'Profil enregistré' : auth.errorMessage.value, snackPosition: SnackPosition.BOTTOM);
+                // Sur Android 13+, Permission.photos ; sur ancien, storage. image_picker gère déjà
+                try {
+                  await Permission.photos.request();
+                } catch (_) {}
+                try {
+                  final f = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80, maxWidth: 1024);
+                  if (f != null) {
+                    Get.dialog(const Center(child: CircularProgressIndicator()), barrierDismissible: false);
+                    final ok = await auth.updateAvatar(f.path);
+                    if (Get.isDialogOpen == true) Get.back();
+                    Get.snackbar(ok ? 'Photo mise à jour' : 'Erreur', ok ? 'Profil enregistré' : auth.errorMessage.value, snackPosition: SnackPosition.BOTTOM, backgroundColor: ok ? cs.primary : Colors.white, colorText: ok ? Colors.white : Colors.black);
+                  }
+                } catch (e) {
+                  if (Get.isDialogOpen == true) Get.back();
+                  Get.snackbar('Erreur', 'Galerie impossible: $e', snackPosition: SnackPosition.BOTTOM);
                 }
               }),
-              if (auth.currentUser.value?.avatarUrl != null)
+              if (auth.currentUser.value?.avatarUrl != null && auth.currentUser.value!.avatarUrl!.isNotEmpty)
                 ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('Supprimer la photo', style: TextStyle(color: Colors.red)), onTap: () async {
                   Get.back();
-                  await auth.updateProfile(avatarUrl: '');
-                  // Force vide : update avec chaîne vide puis recharge
-                  auth.currentUser.value = auth.currentUser.value!.copyWith(avatarUrl: '');
-                  auth.currentUser.refresh();
+                  Get.dialog(AlertDialog(
+                    title: const Text('Supprimer la photo ?'),
+                    content: const Text('Votre photo de profil sera retirée.'),
+                    actions: [
+                      TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+                      TextButton(
+                        onPressed: () async {
+                          Get.back();
+                          Get.dialog(const Center(child: CircularProgressIndicator()), barrierDismissible: false);
+                          final ok = await auth.updateProfile(avatarUrl: '');
+                          if (Get.isDialogOpen == true) Get.back();
+                          Get.snackbar(ok ? 'Supprimée' : 'Erreur', ok ? 'Photo retirée' : auth.errorMessage.value, snackPosition: SnackPosition.BOTTOM);
+                        },
+                        child: const Text('Supprimer', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ));
                 }),
             ],
           ),
@@ -402,7 +443,7 @@ class _MenuItem extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: cs.primary.withOpacity(0.12),
+                color: cs.primary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(11),
               ),
               child: Icon(icon, color: iconColor ?? cs.primary, size: 20),

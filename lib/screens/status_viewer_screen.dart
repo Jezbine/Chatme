@@ -97,6 +97,12 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
   }
 
   void _deleteCurrent() {
+    // Sécurité : seul le propriétaire peut supprimer son statut
+    if (!widget.isMine) {
+      Get.snackbar('Action non autorisée', 'Vous pouvez uniquement consulter le statut des autres — suppression interdite.',
+          snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.white, colorText: Colors.black);
+      return;
+    }
     final item = _items[_index];
     Get.dialog(
       AlertDialog(
@@ -108,11 +114,7 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             onPressed: () {
               Get.back();
-              if (widget.isMine) {
-                StatusService.to.deleteMyStatus(item.id);
-              } else if (widget.ownerId != null) {
-                StatusService.to.deleteContactStatus(widget.ownerId!, item.id);
-              }
+              StatusService.to.deleteMyStatus(item.id);
               setState(() => _items.removeAt(_index));
               if (_items.isEmpty) {
                 _close();
@@ -129,51 +131,133 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
   }
 
   void _editCurrent() {
+    if (!widget.isMine) {
+      Get.snackbar('Action non autorisée', 'Vous pouvez uniquement consulter le statut des autres — modification interdite.',
+          snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.white, colorText: Colors.black);
+      return;
+    }
     final item = _items[_index];
     _pendingDuration = item.durationMinutes;
+    final isPreset = [1, 5, 60, 1440].contains(item.durationMinutes);
+    bool customEdit = !isPreset;
     final ctrl = TextEditingController(text: item.text ?? '');
+    final customCtrl = TextEditingController(text: customEdit ? item.durationMinutes.toString() : '');
     Get.dialog(
-      AlertDialog(
-        title: const Text('Modifier le statut'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: ctrl,
-              maxLines: 3,
-              decoration: const InputDecoration(labelText: 'Contenu', border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<int>(
-              value: item.durationMinutes,
-              decoration: const InputDecoration(labelText: 'Visibilité (min)'),
-              items: const [
-                DropdownMenuItem(value: 1, child: Text('1 min')),
-                DropdownMenuItem(value: 5, child: Text('5 min')),
-                DropdownMenuItem(value: 60, child: Text('1 h')),
-                DropdownMenuItem(value: 1440, child: Text('24 h')),
+      StatefulBuilder(builder: (ctx, setD) {
+        return AlertDialog(
+          title: const Text('Modifier le statut'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: ctrl,
+                maxLines: 3,
+                decoration: const InputDecoration(labelText: 'Contenu', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                initialValue: isPreset ? item.durationMinutes : -1,
+                decoration: const InputDecoration(labelText: 'Visibilité'),
+                items: const [
+                  DropdownMenuItem(value: 1, child: Text('1 min')),
+                  DropdownMenuItem(value: 5, child: Text('5 min')),
+                  DropdownMenuItem(value: 60, child: Text('1 h')),
+                  DropdownMenuItem(value: 1440, child: Text('24 h (défaut WhatsApp)')),
+                  DropdownMenuItem(value: -1, child: Text('Personnalisé...')),
+                ],
+                onChanged: (v) {
+                  setD(() {
+                    if (v == -1) {
+                      customEdit = true;
+                    } else if (v != null) {
+                      customEdit = false;
+                      _pendingDuration = v;
+                    }
+                  });
+                },
+              ),
+              if (customEdit) ...[
+                const SizedBox(height: 10),
+                TextField(
+                  controller: customCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Durée personnalisée (min)',
+                    hintText: '1 → 10080 (7 jours max)',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (v) {
+                    final p = int.tryParse(v.trim());
+                    if (p != null && p >= 1 && p <= 10080) _pendingDuration = p;
+                  },
+                ),
+                const SizedBox(height: 4),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('1 min à 10080 min (7 jours) — WeChat style', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                ),
               ],
-              onChanged: (v) {
-                if (v != null) _pendingDuration = v;
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
+            TextButton(
+              onPressed: () {
+                if (customEdit) {
+                  final p = int.tryParse(customCtrl.text.trim());
+                  if (p == null || p < 1 || p > 10080) {
+                    Get.snackbar('Durée invalide', 'Entrez entre 1 et 10080 minutes', snackPosition: SnackPosition.BOTTOM);
+                    return;
+                  }
+                  _pendingDuration = p;
+                }
+                final text = ctrl.text.trim();
+                if (text.isNotEmpty || item.type != 'text') {
+                  StatusService.to.editMyStatus(item.id, text: text.isEmpty ? null : text, durationMinutes: _pendingDuration);
+                  // Maj locale immédiate pour reflet personnalisé sans attendre realtime
+                  final idx = _items.indexWhere((e) => e.id == item.id);
+                  if (idx != -1) {
+                    final old = _items[idx];
+                    _items[idx] = StatusItem(
+                      id: old.id,
+                      type: old.type,
+                      text: text.isEmpty ? old.text : text,
+                      mediaPath: old.mediaPath,
+                      durationMinutes: _pendingDuration,
+                      createdAt: old.createdAt,
+                      expiresAt: old.createdAt.add(Duration(minutes: _pendingDuration)),
+                    );
+                  }
+                  setState(() {});
+                }
+                Get.back();
+                Get.snackbar('Statut modifié', 'Visible pendant ${_formatDuration(_pendingDuration)}',
+                    snackPosition: SnackPosition.BOTTOM, backgroundColor: ChatMeColors.violet, colorText: Colors.white);
               },
+              child: const Text('Enregistrer'),
             ),
           ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Annuler')),
-          TextButton(
-            onPressed: () {
-              final text = ctrl.text.trim();
-              if (text.isNotEmpty) {
-                StatusService.to.editMyStatus(item.id, text: text, durationMinutes: _pendingDuration);
-              }
-              Get.back();
-            },
-            child: const Text('Enregistrer'),
-          ),
-        ],
-      ),
+        );
+      }),
     );
+  }
+
+  String _formatDuration(int min) {
+    if (min < 60) return '$min min';
+    if (min < 1440) return '${min ~/ 60} h${min % 60 == 0 ? '' : ' ${min % 60} min'}';
+    if (min % 1440 == 0) return '${min ~/ 1440} j';
+    final d = min ~/ 1440;
+    final h = (min % 1440) ~/ 60;
+    if (d > 0 && h > 0) return '${d}j ${h}h';
+    return '${d}j';
+  }
+
+  String _remainingLabel(StatusItem it) {
+    final rem = it.expiresAt.difference(DateTime.now());
+    if (rem.isNegative) return 'expiré';
+    if (rem.inMinutes < 60) return 'expire dans ${rem.inMinutes} min';
+    if (rem.inHours < 24) return 'expire dans ${rem.inHours} h';
+    return 'expire dans ${rem.inDays} j';
   }
 
   int _pendingDuration = 0;
@@ -251,7 +335,8 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(widget.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                              Text('il y a peu de temps', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                              Text('${_remainingLabel(item)} • ${_formatDuration(item.durationMinutes)}',
+                                  style: const TextStyle(color: Colors.white70, fontSize: 11)),
                             ],
                           ),
                         ),
@@ -260,10 +345,11 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
                             icon: const Icon(Icons.edit_outlined, color: Colors.white),
                             onPressed: _editCurrent,
                           ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.white),
-                          onPressed: _deleteCurrent,
-                        ),
+                        if (widget.isMine)
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.white),
+                            onPressed: _deleteCurrent,
+                          ),
                         IconButton(
                           icon: const Icon(Icons.close, color: Colors.white),
                           onPressed: _close,

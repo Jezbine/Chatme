@@ -83,18 +83,27 @@ class CallService extends GetxService {
 
       final liveKitUrl = _getLiveKitUrl();
       if (liveKitUrl == null) {
-        callStatus.value = 'Bientôt disponible';
+        // Mode dégradé : pas de LiveKit configuré → garder l'appel local pour tester micro/caméra
+        callStatus.value = 'Mode local — serveur LiveKit non configuré';
+        isInCall.value = true;
         await Future.delayed(const Duration(milliseconds: 100));
         try {
-          Get.snackbar('Appel', 'Appels vocaux/vidéo bientôt disponibles — configuration LiveKit en cours',
-              snackPosition: SnackPosition.BOTTOM, backgroundColor: const Color(0xFF3C3489), colorText: Colors.white);
+          Get.snackbar('Appel (local)', 'Mode test local : micro/caméra OK, serveur LiveKit à configurer pour appels distants (--dart-define=LIVEKIT_URL)',
+              snackPosition: SnackPosition.BOTTOM, backgroundColor: const Color(0xFF3C3489), colorText: Colors.white, duration: const Duration(seconds: 4));
         } catch (_) {}
-        await leaveCall();
+        // Ne pas leaveCall() : garder LocalAudio/Video actifs pour preview
         return;
       }
       final token = await _fetchCallToken(conversationId, otherUserId);
       if (token == null) {
-        throw Exception('Impossible de récupérer le token d\'appel — Edge Function create-call-token indisponible ou LIVEKIT_SECRET non configuré côté Supabase');
+        // Token indisponible → fallback local au lieu de crash
+        callStatus.value = 'Mode local — token indisponible';
+        isInCall.value = true;
+        try {
+          Get.snackbar('Appel (local)', 'Token LiveKit indisponible (Edge Function create-call-token non déployée). Mode local activé.',
+              snackPosition: SnackPosition.BOTTOM, backgroundColor: const Color(0xFF3C3489), colorText: Colors.white, duration: const Duration(seconds: 4));
+        } catch (_) {}
+        return;
       }
 
       await _room!.connect(

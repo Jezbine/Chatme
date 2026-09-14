@@ -19,10 +19,15 @@ do $$ begin
   if not exists (select 1 from pg_policies where policyname='statuses_insert_own') then
     create policy statuses_insert_own on public.statuses for insert with check (auth.uid() = user_id);
   end if;
+  if not exists (select 1 from pg_policies where policyname='statuses_update_own') then
+    create policy statuses_update_own on public.statuses for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  end if;
   if not exists (select 1 from pg_policies where policyname='statuses_delete_own') then
     create policy statuses_delete_own on public.statuses for delete using (auth.uid() = user_id);
   end if;
 end $$;
+-- Consultation seule : aucune policy ne permet à un utilisateur de modifier/supprimer le statut d'autrui
+-- (seul le propriétaire via auth.uid() = user_id peut update/delete son propre statut)
 do $$ begin alter publication supabase_realtime add table public.statuses; exception when others then null; end $$;
 -- Nettoyage expirés (cron via pg_cron si dispo)
 -- select cron.schedule('purge-statuses','0 * * * *','delete from public.statuses where expires_at < now()');

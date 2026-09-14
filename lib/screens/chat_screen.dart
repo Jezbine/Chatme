@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -7,10 +8,10 @@ import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:chatme/services/messaging_service.dart';
 import 'package:chatme/services/auth_service.dart';
-import 'package:chatme/services/settings_service.dart';
 import 'package:chatme/core/services/notification_service.dart';
 import 'package:chatme/models/conversation.dart';
 import 'package:chatme/models/message.dart';
@@ -239,10 +240,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     messaging.sendVoiceMessage(conversationId: widget.conversation.id, path: path, durationSeconds: seconds);
   }
 
-  // Fix photo/pièce jointe : implémentation complète avec image_picker + upload Supabase
+  // Fix photo/pièce jointe : Meta (WhatsApp) compresse + upload + bulle image ; WeChat similar
   Future<void> _pickAndSendImage(ImageSource source) async {
     try {
-      // Permission explicite (audit perf)
       if (source == ImageSource.camera) {
         final status = await Permission.camera.request();
         if (!status.isGranted) {
@@ -251,20 +251,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           return;
         }
       } else {
-        final status = await Permission.photos.request();
-        // Sur Android, photos peut être denied mais gallery reste accessible via image_picker
-        if (status.isPermanentlyDenied) {
-          Get.snackbar('Permission', 'Autorisez l\'accès aux photos',
-              snackPosition: SnackPosition.BOTTOM);
-        }
+        try { await Permission.photos.request(); } catch (_) {}
       }
       final XFile? file = await _imagePicker.pickImage(source: source, imageQuality: 80, maxWidth: 1280);
       if (file == null) return;
+      Get.dialog(const Center(child: CircularProgressIndicator()), barrierDismissible: false);
       final bytes = await file.readAsBytes();
       final mime = file.mimeType ?? 'image/jpeg';
       final url = await messaging.uploadMedia(file.path, bytes, mime);
+      if (Get.isDialogOpen == true) Get.back();
       if (url == null) {
-        Get.snackbar('Erreur', 'Upload échoué', snackPosition: SnackPosition.BOTTOM);
+        Get.snackbar('Erreur', messaging.errorMessage.value.isNotEmpty ? messaging.errorMessage.value : 'Upload échoué', snackPosition: SnackPosition.BOTTOM);
         return;
       }
       await messaging.sendMessage(
@@ -277,14 +274,81 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       );
       _scrollToBottom();
     } catch (e) {
+      if (Get.isDialogOpen == true) Get.back();
       Get.snackbar('Erreur', 'Photo impossible: $e', snackPosition: SnackPosition.BOTTOM);
     }
   }
 
   Future<void> _pickAndSendFile() async {
-    // Pour l'instant, on réutilise image_picker en mode gallery (vidéo/image)
-    // Si besoin fichier générique, ajouter file_picker au pubspec
     _showAttachmentSheet();
+  }
+
+  Future<void> _pickAndSendVideo() async {
+    try {
+      try { await Permission.photos.request(); } catch (_) {}
+      final XFile? file = await _imagePicker.pickVideo(source: ImageSource.gallery);
+      if (file == null) return;
+      Get.dialog(const Center(child: CircularProgressIndicator()), barrierDismissible: false);
+      final bytes = await File(file.path).readAsBytes();
+      final mime = 'video/mp4';
+      final url = await messaging.uploadMedia(file.path, bytes, mime);
+      if (Get.isDialogOpen == true) Get.back();
+      if (url == null) {
+        Get.snackbar('Erreur', messaging.errorMessage.value.isNotEmpty ? messaging.errorMessage.value : 'Upload vidéo échoué', snackPosition: SnackPosition.BOTTOM);
+        return;
+      }
+      await messaging.sendMessage(
+        conversationId: widget.conversation.id,
+        content: file.name,
+        type: MessageType.video,
+        mediaUrl: url,
+        mediaMimeType: mime,
+        mediaSizeBytes: bytes.length,
+      );
+      _scrollToBottom();
+    } catch (e) {
+      if (Get.isDialogOpen == true) Get.back();
+      Get.snackbar('Erreur', 'Vidéo impossible: $e', snackPosition: SnackPosition.BOTTOM);
+    }
+  }
+
+  Future<void> _pickAndSendGenericFile() async {
+    try {
+      final files = await FilePicker.pickFiles();
+      if (files.isEmpty) return;
+      final f = files.first;
+      Uint8List bytes;
+      if (f.path != null) {
+        bytes = await File(f.path!).readAsBytes();
+      } else {
+        bytes = Uint8List(0);
+      }
+      if (bytes.isEmpty) {
+        Get.snackbar('Erreur', 'Fichier illisible', snackPosition: SnackPosition.BOTTOM);
+        return;
+      }
+      Get.dialog(const Center(child: CircularProgressIndicator()), barrierDismissible: false);
+      final mime = f.extension != null ? 'application/${f.extension}' : 'application/octet-stream';
+      final path = f.path ?? f.name;
+      final url = await messaging.uploadMedia(path, bytes, mime);
+      if (Get.isDialogOpen == true) Get.back();
+      if (url == null) {
+        Get.snackbar('Erreur', messaging.errorMessage.value.isNotEmpty ? messaging.errorMessage.value : 'Upload fichier échoué', snackPosition: SnackPosition.BOTTOM);
+        return;
+      }
+      await messaging.sendMessage(
+        conversationId: widget.conversation.id,
+        content: f.name,
+        type: MessageType.file,
+        mediaUrl: url,
+        mediaMimeType: mime,
+        mediaSizeBytes: bytes.length,
+      );
+      _scrollToBottom();
+    } catch (e) {
+      if (Get.isDialogOpen == true) Get.back();
+      Get.snackbar('Erreur', 'Fichier impossible: $e', snackPosition: SnackPosition.BOTTOM);
+    }
   }
 
   void _showAttachmentSheet() {
@@ -315,8 +379,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 title: const Text('Vidéo (galerie)'),
                 onTap: () {
                   Get.back();
-                  Get.snackbar('Bientôt', 'Envoi vidéo à venir — bucket chat-media prêt',
-                      snackPosition: SnackPosition.BOTTOM);
+                  _pickAndSendVideo();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.insert_drive_file),
+                title: const Text('Fichier'),
+                onTap: () {
+                  Get.back();
+                  _pickAndSendGenericFile();
                 },
               ),
             ],
@@ -373,9 +444,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     options.add(ListTile(
       leading: const Icon(Icons.delete_outline),
       title: const Text('Supprimer pour moi'),
-      onTap: () {
+      onTap: () async {
         Get.back();
-        messaging.deleteMessageForMe(widget.conversation.id, msg.id);
+        await messaging.deleteMessageForMe(widget.conversation.id, msg.id);
+        Get.snackbar('Supprimé', 'Message supprimé pour vous (comme WhatsApp)', snackPosition: SnackPosition.BOTTOM);
       },
     ));
     if (msg.senderId == currentUserId) {
@@ -450,23 +522,30 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               },
               child: Hero(
                 tag: 'avatar_${widget.conversation.getAvatarUrl(currentUserId) ?? otherParticipant.profile?.initials}',
-                child: CircleAvatar(
-                  radius: 18,
-                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                  backgroundImage: widget.conversation.getAvatarUrl(currentUserId) != null
-                      ? NetworkImage(widget.conversation.getAvatarUrl(currentUserId)!)
-                      : null,
-                  child: widget.conversation.getAvatarUrl(currentUserId) == null
-                      ? Text(
-                          otherParticipant.profile?.initials ?? '?',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.onPrimaryContainer,
-                          ),
-                        )
-                      : null,
-                ),
+                child: Builder(builder: (ctx) {
+                  final avatarUrl = widget.conversation.getAvatarUrl(currentUserId);
+                  if (avatarUrl != null && avatarUrl.isNotEmpty) {
+                    return CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                      backgroundImage: NetworkImage(avatarUrl),
+                      onBackgroundImageError: (_, __) {},
+                      child: null,
+                    );
+                  }
+                  return CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                    child: Text(
+                      otherParticipant.profile?.initials ?? '?',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  );
+                }),
               ),
             ),
             const SizedBox(width: 12),
@@ -542,21 +621,33 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 final url = widget.conversation.getAvatarUrl(currentUserId);
                 Get.to(() => AvatarViewerScreen(imageUrl: url, initials: otherParticipant.profile?.initials ?? '?', name: widget.conversation.getTitle(currentUserId)));
               } else if (v == 'effacer') {
-                final ok = await Get.dialog<bool>(AlertDialog(title: const Text('Effacer la discussion'), content: const Text('Supprimer tous les messages pour vous ?'), actions: [TextButton(onPressed: () => Get.back(result: false), child: const Text('Annuler')), TextButton(onPressed: () => Get.back(result: true), child: const Text('Effacer', style: TextStyle(color: Colors.red)))]));
+                final ok = await Get.dialog<bool>(AlertDialog(title: const Text('Effacer la discussion'), content: const Text('Supprimer tous les messages pour vous ? (comme WhatsApp) — local uniquement'), actions: [TextButton(onPressed: () => Get.back(result: false), child: const Text('Annuler')), TextButton(onPressed: () => Get.back(result: true), child: const Text('Effacer', style: TextStyle(color: Colors.red)))]));
                 if (ok == true) {
-                  // Efface localement tous les messages de cette conversation
-                  messaging.messagesByConversation.remove(widget.conversation.id);
-                  messaging.messagesByConversation.refresh();
-                  Get.snackbar('Discussion effacée', 'Messages supprimés localement');
+                  await messaging.clearConversationForMe(widget.conversation.id);
+                  Get.snackbar('Discussion effacée', 'Messages supprimés pour vous (comme WhatsApp/WeChat)', snackPosition: SnackPosition.BOTTOM);
                 }
               } else if (v == 'bloquer') {
-                Get.snackbar('Bloquer', 'Fonctionnalité bientôt disponible', snackPosition: SnackPosition.BOTTOM);
+                final otherId = otherParticipant.userId;
+                final isBlocked = await messaging.isBlocked(otherId);
+                if (isBlocked) {
+                  final ok = await Get.dialog<bool>(AlertDialog(title: const Text('Débloquer ?'), content: Text('Débloquer ${widget.conversation.getTitle(currentUserId)} ?'), actions: [TextButton(onPressed: () => Get.back(result: false), child: const Text('Annuler')), TextButton(onPressed: () => Get.back(result: true), child: const Text('Débloquer'))]));
+                  if (ok == true) {
+                    await messaging.unblockUser(otherId);
+                    Get.snackbar('Débloqué', 'Utilisateur débloqué', snackPosition: SnackPosition.BOTTOM);
+                  }
+                } else {
+                  final ok = await Get.dialog<bool>(AlertDialog(title: const Text('Bloquer ce contact ?'), content: const Text('Vous ne recevrez plus ses messages (comme WhatsApp/WeChat).'), actions: [TextButton(onPressed: () => Get.back(result: false), child: const Text('Annuler')), TextButton(onPressed: () => Get.back(result: true), child: const Text('Bloquer', style: TextStyle(color: Colors.red)))]));
+                  if (ok == true) {
+                    await messaging.blockUser(otherId);
+                    Get.snackbar('Bloqué', 'Utilisateur bloqué', snackPosition: SnackPosition.BOTTOM);
+                  }
+                }
               }
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'profil', child: Row(children: [Icon(Icons.person_outline, size: 18), SizedBox(width: 10), Text('Voir profil')])),
               PopupMenuItem(value: 'effacer', child: Row(children: [Icon(Icons.delete_outline, size: 18, color: Colors.red), SizedBox(width: 10), Text('Effacer discussion', style: TextStyle(color: Colors.red))])),
-              PopupMenuItem(value: 'bloquer', child: Row(children: [Icon(Icons.block, size: 18), SizedBox(width: 10), Text('Bloquer')])),
+              PopupMenuItem(value: 'bloquer', child: Row(children: [Icon(Icons.block, size: 18), SizedBox(width: 10), Text('Bloquer / Débloquer')])),
             ],
           ),
         ],
@@ -623,7 +714,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           const SizedBox(height: 8),
           Text(
             'Dites bonjour !',
-            style: TextStyle(color: cs.onSurfaceVariant.withOpacity(0.7)),
+            style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
           ),
         ],
       ),
@@ -675,8 +766,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             CircleAvatar(
               radius: 14,
               backgroundColor: cs.primaryContainer,
-              backgroundImage: msg.sender?.avatarUrl != null ? NetworkImage(msg.sender!.avatarUrl!) : null,
-              child: msg.sender?.avatarUrl == null
+              backgroundImage: (msg.sender?.avatarUrl != null && msg.sender!.avatarUrl!.isNotEmpty) ? NetworkImage(msg.sender!.avatarUrl!) : null,
+              onBackgroundImageError: (_, __) {},
+              child: (msg.sender?.avatarUrl == null || msg.sender!.avatarUrl!.isEmpty)
                   ? Text(
                       msg.sender?.initials ?? '?',
                       style: TextStyle(fontSize: 10, color: cs.onPrimaryContainer),
@@ -766,19 +858,51 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      msg.mediaUrl!,
-                      width: 200,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, progress) => progress == null
-                          ? child
-                          : Container(
+                    child: msg.mediaUrl!.startsWith('http')
+                        ? Image.network(
+                            msg.mediaUrl!,
+                            width: 200,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, progress) => progress == null
+                                ? child
+                                : Container(
+                                    width: 200,
+                                    height: 150,
+                                    color: cs.surfaceContainerHighest,
+                                    child: const Center(child: CircularProgressIndicator()),
+                                  ),
+                            errorBuilder: (_, __, ___) => Container(
                               width: 200,
                               height: 150,
                               color: cs.surfaceContainerHighest,
-                              child: const Center(child: CircularProgressIndicator()),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.broken_image, color: cs.onSurfaceVariant, size: 32),
+                                  const SizedBox(height: 6),
+                                  Text('Image non disponible', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                                ],
+                              ),
                             ),
-                    ),
+                          )
+                        : Image.file(
+                            File(msg.mediaUrl!),
+                            width: 200,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              width: 200,
+                              height: 150,
+                              color: cs.surfaceContainerHighest,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.broken_image, color: cs.onSurfaceVariant, size: 32),
+                                  const SizedBox(height: 6),
+                                  Text('Image non disponible', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                                ],
+                              ),
+                            ),
+                          ),
                   ),
                   if (msg.content != null && msg.content!.isNotEmpty)
                     Padding(
@@ -815,17 +939,32 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Container(
-                width: 200,
-                height: 150,
-                color: cs.surfaceContainerHighest,
-                child: Center(child: Icon(Icons.play_circle_fill, size: 48, color: cs.onSurfaceVariant)),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 200,
+                    height: 150,
+                    color: cs.surfaceContainerHighest,
+                    child: msg.mediaUrl != null && msg.mediaUrl!.isNotEmpty
+                        ? (msg.mediaUrl!.startsWith('http')
+                            ? Image.network(msg.mediaUrl!, width: 200, height: 150, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.videocam, size: 48, color: Colors.grey))
+                            : const Icon(Icons.videocam, size: 48, color: Colors.grey))
+                        : const Icon(Icons.videocam, size: 48, color: Colors.grey),
+                  ),
+                  const Icon(Icons.play_circle_fill, size: 48, color: Colors.white70),
+                ],
               ),
             ),
             if (msg.content != null && msg.content!.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(msg.content!, style: TextStyle(color: textColor)),
+              ),
+            if (msg.mediaUrl != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('Vidéo • ${_formatFileSize(msg.mediaSizeBytes ?? 0)}', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
               ),
           ],
         );
@@ -841,7 +980,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               children: [
                 Text(msg.content ?? 'Fichier', style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
                 if (msg.mediaSizeBytes != null)
-                  Text(_formatFileSize(msg.mediaSizeBytes!), style: TextStyle(fontSize: 11, color: isMine ? cs.onPrimary.withOpacity(0.7) : cs.onSurfaceVariant)),
+                  Text(_formatFileSize(msg.mediaSizeBytes!), style: TextStyle(fontSize: 11, color: isMine ? cs.onPrimary.withValues(alpha: 0.7) : cs.onSurfaceVariant)),
               ],
             ),
           ],

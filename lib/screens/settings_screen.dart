@@ -67,7 +67,7 @@ class SettingsScreen extends StatelessWidget {
                     subtitle: Text('Code confidentiel au démarrage et en arrière-plan',
                         style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
                     value: LockService.to.enabled.value,
-                    activeColor: cs.primary,
+                    activeThumbColor: cs.primary,
                     onChanged: (v) async {
                     final lock = LockService.to;
                     if (v && !lock.hasPin) {
@@ -102,7 +102,7 @@ class SettingsScreen extends StatelessWidget {
                           subtitle: Text(subtitleText,
                               style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
                           value: lock.biometric.value && lock.enabled.value,
-                          activeColor: cs.primary,
+                          activeThumbColor: cs.primary,
                           onChanged: canUseBiometric
                               ? (v) => lock.setBiometric(v)
                               : null,
@@ -283,7 +283,7 @@ class _Section extends StatelessWidget {
         color: cs.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: cs.outline),
-        boxShadow: isDark ? null : [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 8, offset: const Offset(0, 2))],
+        boxShadow: isDark ? null : [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 2))],
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: cs.outline),
@@ -314,7 +314,7 @@ class _Toggle extends StatelessWidget {
               ? Text(subtitle, style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant))
               : null,
           value: rx.value,
-          activeColor: cs.primary,
+          activeThumbColor: cs.primary,
           onChanged: (v) { rx.value = v; SettingsService.to.save(); },
         ));
   }
@@ -348,7 +348,7 @@ class _Choice extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: cs.primary.withOpacity(0.12),
+            color: cs.primary.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Row(
@@ -476,7 +476,7 @@ class _ThemePreviewCard extends StatelessWidget {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? cs.primary.withOpacity(0.10) : cs.surface,
+            color: selected ? cs.primary.withValues(alpha: 0.10) : cs.surface,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: selected ? cs.primary : cs.outline, width: selected ? 2 : 1),
           ),
@@ -494,7 +494,7 @@ class _ThemePreviewCard extends StatelessWidget {
                 child: Stack(
                   children: [
                     Positioned(left: 4, top: 4, right: 18, child: Container(height: 6, decoration: BoxDecoration(color: surface, borderRadius: BorderRadius.circular(3)))),
-                    Positioned(right: 4, top: 12, left: 18, child: Container(height: 6, decoration: BoxDecoration(color: primary.withOpacity(0.85), borderRadius: BorderRadius.circular(3)))),
+                    Positioned(right: 4, top: 12, left: 18, child: Container(height: 6, decoration: BoxDecoration(color: primary.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(3)))),
                     Positioned(right: 4, bottom: 4, child: Icon(icon, size: 10, color: primary)),
                   ],
                 ),

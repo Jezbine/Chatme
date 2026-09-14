@@ -12,61 +12,63 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  cupertino_icons: ^1.0.8
+  cupertino_icons: ^1.0.9
 
   # State & Navigation
   get: ^4.7.2
 
   # Backend - Supabase
-  supabase_flutter: ^2.8.1
+  supabase_flutter: ^2.17.2
 
   # Firebase (FCM) + Notifications locales
-  firebase_core: ^3.10.1
-  firebase_messaging: ^15.2.4
-  flutter_local_notifications: ^18.0.1
+  firebase_core: ^4.14.0
+  firebase_messaging: ^16.6.0
+  flutter_local_notifications: ^22.3.1
 
   # Deep links
-  app_links: ^6.4.1
+  app_links: ^7.2.1
 
   # Auth / Security
-  local_auth: ^2.3.0
+  local_auth: ^3.0.2
   crypto: ^3.0.6
-  permission_handler: ^11.3.1
+  permission_handler: ^13.0.2
 
   # Chat & Media
-  image_picker: ^1.1.2
-  record: ^6.1.1
-  audioplayers: ^6.4.0
-  video_player: ^2.8.6
-  path_provider: ^2.1.5
-  mobile_scanner: ^6.0.9
+  image_picker: ^1.2.3
+  file_picker: ^12.3.0
+  record: ^7.1.1
+  audioplayers: ^6.8.1
+  video_player: ^2.14.0
+  path_provider: ^2.1.6
+  mobile_scanner: ^7.4.1
   qr_flutter: ^4.1.0
-  url_launcher: ^6.2.6
-  intl: ^0.19.0
+  url_launcher: ^6.3.2
+  intl: ^0.20.3
 
   # Calls
-  livekit_client: ^2.2.0
+  livekit_client: ^2.12.0
 
   # Offline & cache
-  connectivity_plus: ^6.0.5
+  connectivity_plus: ^7.3.1
   hive_flutter: ^1.1.0
   hive: ^2.2.3
   # Optional: flutter_svg pour icône vectorielle
-  flutter_svg: ^2.0.14
+  flutter_svg: ^2.3.0
 
   # Wallet
   feda_flutter: ^1.0.1
-  shared_preferences: ^2.5.3
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.3
 
 dependency_overrides:
-  webview_flutter: 4.10.0
-  test_api: 0.7.2
+  webview_flutter: 4.14.1
+  test_api: 0.7.14
+  permission_handler_android: 13.0.1
 
 # --- Icône de l'app générée depuis le SVG/PNG ---
 # SVG source: assets/icons/app_icon.svg  (vectoriel, utilisé in-app via flutter_svg)

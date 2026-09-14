@@ -17,7 +17,6 @@ import 'services/settings_service.dart';
 import 'services/status_service.dart';
 import 'services/lock_service.dart';
 import 'services/call_service.dart';
-import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/auth/phone_input_screen.dart';
 import 'screens/auth/otp_verification_screen.dart';
@@ -92,10 +91,8 @@ void _wireErrorPopups() {
       });
   wire(AuthService.to.errorMessage);
   wire(MessagingService.to.errorMessage);
-  wire(WalletService.to.errorMessage);
-  wire(ContactsService.to.errorMessage);
-  wire(MomentsService.to.errorMessage);
-  wire(StatusService.to.errorMessage);
+  // Note: Wallet/Contacts/Moments/Status utilisent Get.snackbar direct + debugPrint;
+  // TODO: leur ajouter RxString errorMessage pour unifier le wiring
 }
 
 void _initDeepLinks() {

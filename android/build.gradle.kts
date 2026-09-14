@@ -5,17 +5,25 @@ allprojects {
     }
 }
 
-open class FlutterPluginVersionExtension {
-    val compileSdkVersion: Int = 36
-    val minSdkVersion: Int = 24
-    val targetSdkVersion: Int = 36
-    val ndkVersion: String = "27.0.12077973"
-}
-
+// Forcer compileSdk 36 pour tous les plugins (flutter_webrtc etc.) encore en 31
 subprojects {
-    if (project.name != "app") {
-        project.extensions.findByType(FlutterPluginVersionExtension::class.java)
-            ?: project.extensions.create("flutter", FlutterPluginVersionExtension::class.java)
+    afterEvaluate {
+        try {
+            val androidExt = project.extensions.findByName("android")
+            if (androidExt != null) {
+                val compileSdkMethod = try {
+                    androidExt.javaClass.getMethod("setCompileSdk", Int::class.javaPrimitiveType)
+                } catch (_: Exception) { null }
+                if (compileSdkMethod != null) {
+                    compileSdkMethod.invoke(androidExt, 36)
+                } else {
+                    val compileSdkVersionMethod = try {
+                        androidExt.javaClass.getMethod("setCompileSdkVersion", Int::class.javaPrimitiveType)
+                    } catch (_: Exception) { null }
+                    compileSdkVersionMethod?.invoke(androidExt, 36)
+                }
+            }
+        } catch (_: Exception) {}
     }
 }
 

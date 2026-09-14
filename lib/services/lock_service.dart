@@ -108,11 +108,9 @@ class LockService extends GetxService {
       if (!biometricAvailable.value) return false;
       return await local.authenticate(
         localizedReason: 'Déverrouillez ChatMe',
-        options: const AuthenticationOptions(
-          biometricOnly: false, // autorise code PIN système en fallback
-          stickyAuth: true,
-          useErrorDialogs: true,
-        ),
+        biometricOnly: false, // autorise code PIN système en fallback
+        sensitiveTransaction: true,
+        persistAcrossBackgrounding: true,
       );
     } catch (e) {
       if (kDebugMode) print('Biometric auth error: $e');

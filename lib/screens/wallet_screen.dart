@@ -139,7 +139,7 @@ class WalletScreen extends StatelessWidget {
                                   color: cs.onSurfaceVariant)),
                           const Spacer(),
                           Obx(() => Text('${wallet.transactions.length} • Banque',
-                              style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant.withOpacity(0.6)))),
+                              style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant.withValues(alpha: 0.6)))),
                         ],
                       ),
                     ),
@@ -148,13 +148,13 @@ class WalletScreen extends StatelessWidget {
                         padding: const EdgeInsets.all(20),
                         child: Column(
                           children: [
-                            Icon(Icons.account_balance, size: 28, color: cs.onSurfaceVariant.withOpacity(0.3)),
+                            Icon(Icons.account_balance, size: 28, color: cs.onSurfaceVariant.withValues(alpha: 0.3)),
                             const SizedBox(height: 8),
                             Text('Aucune transaction — portefeuille banque à 0 FCFA',
                                 textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
                             const SizedBox(height: 4),
                             Text('Faites un dépôt ou une recharge pour commencer.',
-                                textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant.withOpacity(0.6), fontSize: 11)),
+                                textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.6), fontSize: 11)),
                           ],
                         ),
                       ),
@@ -238,7 +238,7 @@ class WalletScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: ChatMeColors.violet.withOpacity(0.12),
+                            color: ChatMeColors.violet.withValues(alpha: 0.12),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(Icons.account_balance_wallet, color: ChatMeColors.violet, size: 22),
@@ -378,7 +378,7 @@ class WalletScreen extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.12),
+                              color: Colors.green.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: const Text('Bénin (+229)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.green)),
@@ -418,7 +418,7 @@ class WalletScreen extends StatelessWidget {
                         padding: const EdgeInsets.all(10),
                         margin: const EdgeInsets.only(bottom: 12),
                         decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.1),
+                          color: Colors.red.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: Colors.red.shade300),
                         ),
@@ -524,7 +524,7 @@ class WalletScreen extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? ChatMeColors.violet.withOpacity(0.08) : Colors.grey.shade50,
+          color: isSelected ? ChatMeColors.violet.withValues(alpha: 0.08) : Colors.grey.shade50,
           border: Border.all(
             color: isSelected ? ChatMeColors.violet : Colors.grey.shade300,
             width: isSelected ? 1.5 : 1,
@@ -536,7 +536,7 @@ class WalletScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.12),
+                color: iconColor.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: iconColor, size: 20),
@@ -599,13 +599,13 @@ class WalletScreen extends StatelessWidget {
             const Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Text('Choisissez une action', style: TextStyle(fontSize: 13, color: ChatMeColors.inkSoft), textAlign: TextAlign.center)),
             const SizedBox(height: 16),
             ListTile(
-              leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: ChatMeColors.violet.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.arrow_upward, color: ChatMeColors.violet)),
+              leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: ChatMeColors.violet.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.arrow_upward, color: ChatMeColors.violet)),
               title: const Text('Envoyer', style: TextStyle(fontWeight: FontWeight.w600)),
               subtitle: const Text('Scanner le QR du receveur', style: TextStyle(fontSize: 12, color: ChatMeColors.inkSoft)),
               onTap: () { Get.back(); _scanForUserToPay(context); },
             ),
             ListTile(
-              leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: ChatMeColors.cProfil.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.qr_code, color: ChatMeColors.cProfil)),
+              leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: ChatMeColors.cProfil.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.qr_code, color: ChatMeColors.cProfil)),
               title: const Text('Recevoir', style: TextStyle(fontWeight: FontWeight.w600)),
               subtitle: const Text('Afficher mon QR pour être payé', style: TextStyle(fontSize: 12, color: ChatMeColors.inkSoft)),
               onTap: () { Get.back(); Get.to(() => const MyQrScreen()); },
@@ -906,7 +906,7 @@ class _TxItem extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: cs.outline.withOpacity(0.3), width: 0.8)),
+        border: Border(bottom: BorderSide(color: cs.outline.withValues(alpha: 0.3), width: 0.8)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
