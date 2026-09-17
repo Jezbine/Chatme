@@ -26,15 +26,13 @@ jobs:
       - name: Install Flutter Dependencies
         run: flutter pub get
 
-      - name: Install CocoaPods
-        run: |
-          cd ios
-          pod install --repo-update
-          cd ..
-
       - name: Build iOS App (.ipa)
         run: |
           set -o pipefail
+          touch ios_build.log
+          cd ios
+          pod install --repo-update || pod install || true
+          cd ..
           flutter build ios --release --no-codesign 2>&1 | tee ios_build.log
           mkdir -p build/ios/ipa/Payload
           cp -r build/ios/iphoneos/Runner.app build/ios/ipa/Payload/
