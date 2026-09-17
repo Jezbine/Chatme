@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../widgets/chat_header.dart';
 import '../../widgets/chat_sheets.dart';
+import '../../widgets/media_viewer.dart';
 import '../../services/moments_service.dart';
 
 class MomentsScreen extends StatelessWidget {
@@ -156,9 +157,17 @@ class _MomentCardState extends State<_MomentCard> {
           const SizedBox(height: 8),
           Text(m.text, style: TextStyle(fontSize: 13.5, color: cs.onSurface, height: 1.4)),
           if (m.photoPath != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: _buildMomentImage(m.photoPath!),
+            GestureDetector(
+              onTap: () => ImageViewerScreen.show(
+                context,
+                imageUrl: m.photoPath!,
+                title: m.name,
+                subtitle: m.time,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: _buildMomentImage(m.photoPath!),
+              ),
             )
           else
             Container(

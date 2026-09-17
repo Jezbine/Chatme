@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../widgets/chat_header.dart';
 import '../../core/services/service_catalog.dart';
 import 'service_detail_screen.dart';
+import 'mini_apps/telecom_mini_app.dart';
+import 'mini_apps/energy_mini_app.dart';
+import 'mini_apps/taxi_mini_app.dart';
 
 class ServicesScreen extends StatefulWidget {
   const ServicesScreen({super.key});
@@ -325,6 +329,99 @@ class _ServicesScreenState extends State<ServicesScreen> {
     );
   }
 
+  void _showBeninUssdSheet() {
+    final codes = [
+      {'title': 'Police Secours', 'code': '117', 'desc': 'Numéro d\'urgence gratuit national', 'type': 'call'},
+      {'title': 'Sapeurs-Pompiers', 'code': '118', 'desc': 'Incendies et secours d\'urgence', 'type': 'call'},
+      {'title': 'SAMU Bénin', 'code': '185', 'desc': 'Urgences médicales et ambulances', 'type': 'call'},
+      {'title': 'MTN Bénin - Solde & Menu', 'code': '*111#', 'desc': 'Menu général, solde compte principal', 'type': 'ussd'},
+      {'title': 'MTN MoMo', 'code': '*880#', 'desc': 'Menu Mobile Money (transfert, retrait)', 'type': 'ussd'},
+      {'title': 'Moov Africa - Solde & Menu', 'code': '*101#', 'desc': 'Menu général Moov Africa Bénin', 'type': 'ussd'},
+      {'title': 'Moov Money', 'code': '*155#', 'desc': 'Menu Flooz / Moov Money', 'type': 'ussd'},
+      {'title': 'Celtiis Bénin - Menu & Solde', 'code': '*100#', 'desc': 'Menu général Celtiis Bénin (SBIN)', 'type': 'ussd'},
+      {'title': 'Celtiis Cash', 'code': '*889#', 'desc': 'Paiement mobile Celtiis Cash', 'type': 'ussd'},
+    ];
+
+    Get.bottomSheet(
+      Container(
+        height: MediaQuery.of(context).size.height * 0.70,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              const SizedBox(height: 12),
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    const Icon(Icons.shield_outlined, color: Color(0xFF1B8A5A), size: 22),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text('Services & Urgences Bénin 🇧🇯', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black)),
+                    ),
+                    IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Get.back()),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  itemCount: codes.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final c = codes[i];
+                    final isCall = c['type'] == 'call';
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      leading: CircleAvatar(
+                        backgroundColor: (isCall ? Colors.red : const Color(0xFF1B8A5A)).withValues(alpha: 0.12),
+                        child: Icon(isCall ? Icons.emergency : Icons.dialpad, color: isCall ? Colors.red : const Color(0xFF1B8A5A), size: 20),
+                      ),
+                      title: Text(c['title']!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black)),
+                      subtitle: Text(c['desc']!, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(c['code']!, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Colors.black)),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.copy, size: 14, color: Colors.grey),
+                          ],
+                        ),
+                      ),
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: c['code']!));
+                        Get.snackbar(
+                          'Code copié',
+                          '${c['title']}: ${c['code']} copié dans le presse-papiers.',
+                          snackPosition: SnackPosition.BOTTOM,
+                          duration: const Duration(seconds: 2),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -396,7 +493,43 @@ class _ServicesScreenState extends State<ServicesScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1B8A5A).withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF1B8A5A).withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.flash_on, color: Color(0xFF1B8A5A), size: 18),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Numéros utiles & USSD Bénin (117, 118, MTN, Moov...)',
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF1B8A5A)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _showBeninUssdSheet,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1B8A5A),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text('Consulter', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
             Expanded(
               child: GridView.builder(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
@@ -480,7 +613,20 @@ class _ServicesScreenState extends State<ServicesScreen> {
                     );
                   }
 
-                  return GestureDetector(onTap: () => Get.to(() => ServiceDetailScreen(service: s)), child: tile);
+                  return GestureDetector(
+                    onTap: () {
+                      if (s.id == 'boutique') {
+                        Get.to(() => const TelecomMiniApp());
+                      } else if (s.id == 'factures') {
+                        Get.to(() => const EnergyMiniApp());
+                      } else if (s.id == 'taxi') {
+                        Get.to(() => const TaxiMiniApp());
+                      } else {
+                        Get.to(() => ServiceDetailScreen(service: s));
+                      }
+                    },
+                    child: tile,
+                  );
                 },
               ),
             ),
@@ -500,6 +646,7 @@ class _ServiceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isActive = service.id == 'boutique' || service.id == 'factures' || service.id == 'taxi';
     return LayoutBuilder(builder: (context, constraints) {
       final tileW = constraints.maxWidth;
       final iconSize = (tileW * 0.32).clamp(28.0, 44.0);
@@ -534,14 +681,36 @@ class _ServiceTile extends StatelessWidget {
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(color: isEditMode ? Colors.orange.withValues(alpha: 0.12) : cs.primary.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(6)),
-                    child: Text(isEditMode ? 'Glisser' : 'Bientôt', style: TextStyle(fontSize: (descSize * 0.9).clamp(6.0, 7.0), fontWeight: FontWeight.w700, color: isEditMode ? Colors.orange : cs.primary)),
+                    decoration: BoxDecoration(
+                      color: isEditMode
+                          ? Colors.orange.withValues(alpha: 0.12)
+                          : (isActive ? Colors.green.withValues(alpha: 0.12) : cs.primary.withValues(alpha: 0.10)),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      isEditMode ? 'Glisser' : (isActive ? 'Actif' : 'Bientôt'),
+                      style: TextStyle(
+                        fontSize: (descSize * 0.9).clamp(6.0, 7.0),
+                        fontWeight: FontWeight.w700,
+                        color: isEditMode ? Colors.orange : (isActive ? Colors.green : cs.primary),
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-          Positioned(top: 6, right: 6, child: Icon(isEditMode ? Icons.drag_indicator : Icons.lock_clock, size: 13, color: cs.onSurfaceVariant.withValues(alpha: 0.5))),
+          Positioned(
+            top: 6,
+            right: 6,
+            child: Icon(
+              isEditMode
+                  ? Icons.drag_indicator
+                  : (isActive ? Icons.bolt : Icons.lock_clock),
+              size: 13,
+              color: isActive && !isEditMode ? Colors.green : cs.onSurfaceVariant.withValues(alpha: 0.5),
+            ),
+          ),
         ],
       );
     });

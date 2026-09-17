@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:chatme/config/supabase_config.dart';
+import 'package:chatme/core/utils/string_extension.dart';
 import 'package:flutter_contacts/flutter_contacts.dart' as fc;
 
 /// Audit 2.8 — Système d'ajout de contacts actuel : par QR uniquement (style WeChat).
@@ -18,6 +19,8 @@ class AddedContact {
   final String initials;
   final int colorValue;
   final DateTime addedAt;
+  final String? phoneNumber;
+  final String? avatarUrl;
 
   AddedContact({
     required this.id,
@@ -25,6 +28,8 @@ class AddedContact {
     required this.initials,
     required this.colorValue,
     required this.addedAt,
+    this.phoneNumber,
+    this.avatarUrl,
   });
 
   Map<String, dynamic> toJson() => {
@@ -33,14 +38,19 @@ class AddedContact {
         'initials': initials,
         'colorValue': colorValue,
         'addedAt': addedAt.toIso8601String(),
+        'phoneNumber': phoneNumber,
+        'avatarUrl': avatarUrl,
       };
 
   factory AddedContact.fromJson(Map<String, dynamic> j) => AddedContact(
         id: j['id'] as String,
         name: j['name'] as String,
-        initials: j['initials'] as String,
-        colorValue: j['colorValue'] as int,
-        addedAt: DateTime.parse(j['addedAt'] as String),
+        initials: (j['initials'] as String?) ??
+            ((j['name'] as String?)?.isNotEmpty == true ? (j['name'] as String).initials : '?'),
+        colorValue: (j['colorValue'] as int?) ?? 0xFF3C3489,
+        addedAt: j['addedAt'] != null ? DateTime.parse(j['addedAt'] as String) : DateTime.now(),
+        phoneNumber: j['phoneNumber'] as String?,
+        avatarUrl: j['avatarUrl'] as String?,
       );
 }
 
@@ -191,27 +201,58 @@ class ContactsService extends GetxService {
       // Matcher numéros device avec profils Supabase (phone_number)
       List<AddedContact> matched = [];
       try {
-        final rows = await _client.from('profiles').select('id, display_name, phone_number').limit(100);
+        final rows = await _client.from('profiles').select('id, display_name, phone_number, avatar_url').limit(500);
         final Map<String, Map<String, dynamic>> byPhone = {};
+        final myId = _client.auth.currentUser?.id;
+
         for (final r in (rows as List)) {
           final m = r as Map<String, dynamic>;
-          final phone = (m['phone_number'] as String? ?? '').replaceAll(RegExp(r'[^0-9+]'), '');
-          if (phone.isNotEmpty) byPhone[phone] = m;
+          final raw = m['phone_number'] as String? ?? '';
+          final phone = raw.replaceAll(RegExp(r'[^0-9+]'), '');
+          if (phone.isNotEmpty) {
+            byPhone[phone] = m;
+            final digitsOnly = phone.replaceAll(RegExp(r'[^0-9]'), '');
+            byPhone[digitsOnly] = m;
+            if (phone.startsWith('+229')) {
+              final local = phone.replaceFirst('+229', '');
+              byPhone[local] = m;
+              if (local.startsWith('0')) {
+                byPhone[local.substring(1)] = m;
+              } else {
+                byPhone['0$local'] = m;
+              }
+            } else if (digitsOnly.startsWith('229')) {
+              final local = digitsOnly.substring(3);
+              byPhone[local] = m;
+              byPhone['+$digitsOnly'] = m;
+            } else {
+              byPhone['+229$digitsOnly'] = m;
+              byPhone['229$digitsOnly'] = m;
+            }
+          }
         }
         for (final c in deviceContacts) {
           for (final p in c.phones) {
-            final norm = p.number.replaceAll(RegExp(r'[^0-9+]'), '');
-            final profile = byPhone[norm] ?? byPhone['+229$norm'] ?? byPhone[norm.replaceFirst('+229', '')];
+            final raw = p.number.replaceAll(RegExp(r'[^0-9+]'), '');
+            final digitsOnly = raw.replaceAll(RegExp(r'[^0-9]'), '');
+            final profile = byPhone[raw] ??
+                byPhone[digitsOnly] ??
+                byPhone['+$digitsOnly'] ??
+                byPhone['+229$digitsOnly'] ??
+                byPhone['229$digitsOnly'] ??
+                (digitsOnly.startsWith('229') ? byPhone[digitsOnly.substring(3)] : null);
             if (profile != null) {
               final id = profile['id'] as String;
-              if (has(id) || matched.any((e) => e.id == id)) continue;
+              if (id == myId || has(id) || matched.any((e) => e.id == id)) continue;
               final name = (profile['display_name'] as String?) ?? c.displayName;
               matched.add(AddedContact(
                 id: id,
                 name: name,
-                initials: name.substring(0, name.length >= 2 ? 2 : 1).toUpperCase(),
+                initials: name.initials,
                 colorValue: _palette[(added.length + matched.length) % _palette.length],
                 addedAt: DateTime.now(),
+                phoneNumber: profile['phone_number'] as String?,
+                avatarUrl: profile['avatar_url'] as String?,
               ));
               break;
             }
@@ -230,7 +271,6 @@ class ContactsService extends GetxService {
       }
       // Fallback : ajouter les contacts device locaux comme placeholders si aucun match Supabase
       if (matched.isEmpty && deviceContacts.isNotEmpty) {
-        // On retourne vide mais log pour debug — évite d'ajouter des faux profils
         if (kDebugMode) debugPrint('[Contacts] aucun match Supabase, ${deviceContacts.length} contacts device ignorés');
       }
       return matched;
@@ -240,15 +280,11 @@ class ContactsService extends GetxService {
     }
   }
 
-  /// Ajoute un contact (depuis un QR scanné). Retourne false si déjà présent.
-  /// Maintenant: en mode Supabase, envoie une demande en attente de validation (mutuelle).
-  bool addFromScan(String id, String name) {
+  /// Ajoute un contact (depuis un QR scanné ou numéro). Retourne false si déjà présent.
+  bool addFromScan(String id, String name, {String? phoneNumber, String? avatarUrl}) {
     if (id.isEmpty) return false;
     if (has(id)) return false;
-    final parts = name.trim().split(RegExp(r'\s+'));
-    final initials = parts.length >= 2
-        ? (parts[0][0] + parts[1][0]).toUpperCase()
-        : name.substring(0, name.length >= 2 ? 2 : 1).toUpperCase();
+    final initials = name.trim().initials;
     final color = _palette[added.length % _palette.length];
     added.insert(
       0,
@@ -258,10 +294,46 @@ class ContactsService extends GetxService {
         initials: initials,
         colorValue: color,
         addedAt: DateTime.now(),
+        phoneNumber: phoneNumber,
+        avatarUrl: avatarUrl,
       ),
     );
     _persist();
     return true;
+  }
+
+  Future<bool> deleteContact(String id) async {
+    added.removeWhere((c) => c.id == id);
+    await _persist();
+    return true;
+  }
+
+  Future<Map<String, dynamic>?> searchUserByPhone(String rawPhone) async {
+    try {
+      final clean = rawPhone.replaceAll(RegExp(r'[^0-9+]'), '');
+      if (clean.length < 8) return null;
+
+      final variants = <String>{
+        clean,
+        if (!clean.startsWith('+')) '+$clean',
+        if (clean.startsWith('+229')) clean.replaceFirst('+229', ''),
+        if (!clean.startsWith('+229') && !clean.startsWith('229')) '+229$clean',
+        if (!clean.startsWith('+229') && !clean.startsWith('229')) '229$clean',
+      };
+
+      for (final v in variants) {
+        final res = await _client
+            .from('profiles')
+            .select('id, display_name, phone_number, avatar_url')
+            .eq('phone_number', v)
+            .maybeSingle();
+        if (res != null) return res;
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Contacts] searchUserByPhone error: $e');
+      return null;
+    }
   }
 
   /// Envoie une demande d'ajout (validation mutuelle). Retourne true si envoyée.

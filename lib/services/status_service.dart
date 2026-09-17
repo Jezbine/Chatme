@@ -92,10 +92,15 @@ class StatusService extends GetxService {
 
   final RxList<StatusItem> myStatuses = <StatusItem>[].obs;
   final RxList<ContactStatus> contacts = <ContactStatus>[].obs;
+  final RxSet<String> viewedStatusIds = <String>{}.obs;
   bool _supabaseAvailable = false;
   RealtimeChannel? _statusChannel; // ignore: unused_field - utilisé via _statusChannel?.unsubscribe() dans onClose
 
   Future<StatusService> init() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawViewed = prefs.getStringList('viewed_status_ids') ?? [];
+    viewedStatusIds.addAll(rawViewed);
+
     // P1.3 : tente Supabase d'abord (identique à MomentsService)
     try {
       final client = SupabaseConfig.client;
@@ -113,7 +118,6 @@ class StatusService extends GetxService {
       _supabaseAvailable = false;
       if (kDebugMode) debugPrint('[Status] Supabase non disponible, fallback local: $e');
     }
-    final prefs = await SharedPreferences.getInstance();
     final rawMine = prefs.getStringList('status_mine');
     final rawContacts = prefs.getStringList('status_contacts');
 
@@ -130,6 +134,15 @@ class StatusService extends GetxService {
           .toList();
     }
     return this;
+  }
+
+  bool isViewed(String statusId) => viewedStatusIds.contains(statusId);
+
+  Future<void> markAsViewed(String statusId) async {
+    if (viewedStatusIds.contains(statusId)) return;
+    viewedStatusIds.add(statusId);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('viewed_status_ids', viewedStatusIds.toList());
   }
 
   Future<void> _fetchFromSupabase() async {

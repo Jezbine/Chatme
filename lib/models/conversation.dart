@@ -8,6 +8,9 @@ class Conversation {
   final ConversationType type;
   final String? name;
   final String? avatarUrl;
+  final String? description;
+  final bool onlyAdminsCanSend;
+  final bool onlyAdminsCanEditInfo;
   final String createdBy;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -19,6 +22,9 @@ class Conversation {
     required this.type,
     this.name,
     this.avatarUrl,
+    this.description,
+    this.onlyAdminsCanSend = false,
+    this.onlyAdminsCanEditInfo = false,
     required this.createdBy,
     required this.createdAt,
     required this.updatedAt,
@@ -31,6 +37,9 @@ class Conversation {
         type: ConversationType.values.asNameMap()[json['type']] ?? ConversationType.direct,
         name: json['name'] as String?,
         avatarUrl: json['avatar_url'] as String?,
+        description: json['description'] as String?,
+        onlyAdminsCanSend: (json['only_admins_can_send'] as bool?) ?? false,
+        onlyAdminsCanEditInfo: (json['only_admins_can_edit_info'] as bool?) ?? false,
         createdBy: (json['created_by'] as String?) ?? '',
         createdAt: json['created_at'] != null
             ? (DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now())
@@ -69,6 +78,9 @@ class Conversation {
       type: ConversationType.values.asNameMap()[json['type']] ?? ConversationType.direct,
       name: json['name'] as String?,
       avatarUrl: json['avatar_url'] as String?,
+      description: json['description'] as String?,
+      onlyAdminsCanSend: (json['only_admins_can_send'] as bool?) ?? false,
+      onlyAdminsCanEditInfo: (json['only_admins_can_edit_info'] as bool?) ?? false,
       createdBy: (json['created_by'] as String?) ?? '',
       createdAt: json['created_at'] != null
           ? (DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now())
@@ -124,6 +136,9 @@ class Conversation {
     ConversationType? type,
     String? name,
     String? avatarUrl,
+    String? description,
+    bool? onlyAdminsCanSend,
+    bool? onlyAdminsCanEditInfo,
     String? createdBy,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -135,6 +150,9 @@ class Conversation {
         type: type ?? this.type,
         name: name ?? this.name,
         avatarUrl: avatarUrl ?? this.avatarUrl,
+        description: description ?? this.description,
+        onlyAdminsCanSend: onlyAdminsCanSend ?? this.onlyAdminsCanSend,
+        onlyAdminsCanEditInfo: onlyAdminsCanEditInfo ?? this.onlyAdminsCanEditInfo,
         createdBy: createdBy ?? this.createdBy,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,

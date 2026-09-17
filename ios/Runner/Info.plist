@@ -59,12 +59,21 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
+	<key>NSCameraUsageDescription</key>
+	<string>ChatMe a besoin d'accéder à l'appareil photo pour vous permettre de prendre des photos, vidéos et passer des appels vidéo.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ChatMe a besoin d'accéder au micro pour les messages vocaux et les appels audio/vidéo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>ChatMe a besoin d'accéder à vos photos pour envoyer des images et personnaliser votre profil.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>ChatMe utilise vos contacts pour vous permettre de retrouver vos proches et recharger leur numéro facilement.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>ChatMe utilise Face ID pour déverrouiller l'application et sécuriser vos transactions en toute confidentialité.</string>
+	<key>UIBackgroundModes</key>
 	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
+		<string>fetch</string>
+		<string>remote-notification</string>
+		<string>voip</string>
 	</array>
 </dict>
 </plist>

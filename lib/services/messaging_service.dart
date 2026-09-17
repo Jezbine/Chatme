@@ -26,6 +26,8 @@ class MessagingService extends GetxService {
   // WhatsApp-like typing indicator
   final RxMap<String, bool> typingByConversation = <String, bool>{}.obs;
   final RxMap<String, String> typingUserByConversation = <String, String>{}.obs;
+  // WhatsApp-like pinned conversations (max 3)
+  final RxList<String> pinnedConversationIds = <String>[].obs;
 
   RealtimeChannel? _messagesChannel;
   RealtimeChannel? _conversationsChannel;
@@ -44,6 +46,7 @@ class MessagingService extends GetxService {
 
   Future<void> init() async {
     _listenConnectivity();
+    await _loadPinnedConversations();
     await loadConversations();
     // S'assurer que les canaux realtime sont toujours actifs même si load a échoué
     _subscribeToConversations();
@@ -604,6 +607,19 @@ class MessagingService extends GetxService {
       } else {
         messagesByConversation[conversationId] = loaded;
       }
+
+      // Résolution des citations parentes (replyTo)
+      final currentList = messagesByConversation[conversationId] ?? loaded;
+      for (int i = 0; i < currentList.length; i++) {
+        final rId = currentList[i].replyToId;
+        if (rId != null && rId.isNotEmpty && currentList[i].replyTo == null) {
+          final parent = currentList.firstWhereOrNull((m) => m.id == rId);
+          if (parent != null) {
+            currentList[i] = currentList[i].copyWith(replyTo: parent);
+          }
+        }
+      }
+      messagesByConversation[conversationId] = currentList;
       messagesByConversation.refresh();
       // Cache messages pour hors-ligne
       final allMsgs = messagesByConversation[conversationId] ?? loaded;
@@ -633,6 +649,275 @@ class MessagingService extends GetxService {
     } catch (e) {
       errorMessage.value = 'Erreur création conversation: $e';
       return null;
+    }
+  }
+
+  Future<Message?> sendSystemMessage({
+    required String conversationId,
+    required String content,
+  }) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return null;
+    return await sendMessage(
+      conversationId: conversationId,
+      content: content,
+      type: MessageType.system,
+    );
+  }
+
+  Future<Conversation?> createGroupConversation({
+    required String name,
+    required List<String> memberUserIds,
+    String? avatarUrl,
+    String? description,
+  }) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      errorMessage.value = 'Non connecté — reconnectez-vous';
+      return null;
+    }
+    try {
+      final insertPayload = <String, dynamic>{
+        'type': 'group',
+        'name': name.trim(),
+        'avatar_url': avatarUrl,
+        'created_by': userId,
+      };
+      if (description != null && description.trim().isNotEmpty) {
+        insertPayload['description'] = description.trim();
+      }
+
+      final insertRes = await _client.from('conversations').insert(insertPayload).select().single();
+      final convId = insertRes['id'] as String;
+
+      final allUserIds = {userId, ...memberUserIds}.toList();
+      final participantsData = allUserIds.map((uid) {
+        return {
+          'conversation_id': convId,
+          'user_id': uid,
+          'role': uid == userId ? 'admin' : 'member',
+        };
+      }).toList();
+
+      await _client.from('conversation_participants').insert(participantsData);
+
+      // Message système initial WhatsApp
+      await sendSystemMessage(
+        conversationId: convId,
+        content: 'Vous avez créé le groupe « $name »',
+      );
+
+      await loadConversations();
+      return conversations.firstWhereOrNull((c) => c.id == convId);
+    } catch (e) {
+      if (kDebugMode) debugPrint('Erreur createGroupConversation: $e');
+      errorMessage.value = 'Erreur création groupe: $e';
+      return null;
+    }
+  }
+
+  Future<bool> updateGroupInfo({
+    required String conversationId,
+    String? name,
+    String? description,
+    String? avatarUrl,
+  }) async {
+    try {
+      final payload = <String, dynamic>{
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      if (name != null) payload['name'] = name.trim();
+      if (description != null) payload['description'] = description.trim();
+      if (avatarUrl != null) payload['avatar_url'] = avatarUrl;
+
+      await _client.from('conversations').update(payload).eq('id', conversationId);
+
+      // Maj locale réactive
+      final idx = conversations.indexWhere((c) => c.id == conversationId);
+      if (idx != -1) {
+        conversations[idx] = conversations[idx].copyWith(
+          name: name ?? conversations[idx].name,
+          description: description ?? conversations[idx].description,
+          avatarUrl: avatarUrl ?? conversations[idx].avatarUrl,
+        );
+        conversations.refresh();
+      }
+
+      await sendSystemMessage(
+        conversationId: conversationId,
+        content: 'Les informations du groupe ont été mises à jour',
+      );
+      return true;
+    } catch (e) {
+      if (kDebugMode) debugPrint('Erreur updateGroupInfo: $e');
+      errorMessage.value = 'Erreur mise à jour groupe: $e';
+      return false;
+    }
+  }
+
+  Future<bool> updateGroupSettings({
+    required String conversationId,
+    required bool onlyAdminsCanSend,
+    required bool onlyAdminsCanEditInfo,
+  }) async {
+    try {
+      await _client.from('conversations').update({
+        'only_admins_can_send': onlyAdminsCanSend,
+        'only_admins_can_edit_info': onlyAdminsCanEditInfo,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', conversationId);
+
+      final idx = conversations.indexWhere((c) => c.id == conversationId);
+      if (idx != -1) {
+        conversations[idx] = conversations[idx].copyWith(
+          onlyAdminsCanSend: onlyAdminsCanSend,
+          onlyAdminsCanEditInfo: onlyAdminsCanEditInfo,
+        );
+        conversations.refresh();
+      }
+
+      await sendSystemMessage(
+        conversationId: conversationId,
+        content: 'Les autorisations du groupe ont été modifiées',
+      );
+      return true;
+    } catch (e) {
+      if (kDebugMode) debugPrint('Erreur updateGroupSettings: $e');
+      errorMessage.value = 'Erreur paramètres groupe: $e';
+      return false;
+    }
+  }
+
+  Future<bool> setParticipantRole({
+    required String conversationId,
+    required String userId,
+    required String role,
+    String? memberName,
+  }) async {
+    try {
+      await _client
+          .from('conversation_participants')
+          .update({'role': role})
+          .eq('conversation_id', conversationId)
+          .eq('user_id', userId);
+
+      await loadConversations();
+
+      final label = role == 'admin'
+          ? '${memberName ?? 'Ce membre'} est désormais administrateur'
+          : '${memberName ?? 'Ce membre'} n\'est plus administrateur';
+      await sendSystemMessage(conversationId: conversationId, content: label);
+      return true;
+    } catch (e) {
+      if (kDebugMode) debugPrint('Erreur setParticipantRole: $e');
+      errorMessage.value = 'Erreur rôle participant: $e';
+      return false;
+    }
+  }
+
+  Future<bool> addParticipantsToGroup(String conversationId, List<String> userIds, {List<String>? names}) async {
+    try {
+      final participantsData = userIds.map((uid) => {
+        'conversation_id': conversationId,
+        'user_id': uid,
+        'role': 'member',
+      }).toList();
+      await _client.from('conversation_participants').insert(participantsData);
+      await loadConversations();
+
+      final namesStr = (names != null && names.isNotEmpty) ? names.join(', ') : 'De nouveaux membres';
+      await sendSystemMessage(
+        conversationId: conversationId,
+        content: '$namesStr ont été ajoutés au groupe',
+      );
+      return true;
+    } catch (e) {
+      if (kDebugMode) debugPrint('Erreur addParticipantsToGroup: $e');
+      errorMessage.value = 'Erreur ajout participant: $e';
+      return false;
+    }
+  }
+
+  Future<bool> removeParticipantFromGroup(String conversationId, String userId, {String? memberName}) async {
+    try {
+      await _client
+          .from('conversation_participants')
+          .delete()
+          .eq('conversation_id', conversationId)
+          .eq('user_id', userId);
+      await loadConversations();
+
+      await sendSystemMessage(
+        conversationId: conversationId,
+        content: '${memberName ?? 'Un membre'} a été retiré du groupe',
+      );
+      return true;
+    } catch (e) {
+      if (kDebugMode) debugPrint('Erreur removeParticipantFromGroup: $e');
+      errorMessage.value = 'Erreur retrait participant: $e';
+      return false;
+    }
+  }
+
+  Future<bool> leaveGroup(String conversationId, {String? userName}) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return false;
+    try {
+      await _client
+          .from('conversation_participants')
+          .delete()
+          .eq('conversation_id', conversationId)
+          .eq('user_id', userId);
+
+      await sendSystemMessage(
+        conversationId: conversationId,
+        content: '${userName ?? 'Un participant'} a quitté le groupe',
+      );
+
+      conversations.removeWhere((c) => c.id == conversationId);
+      conversations.refresh();
+      clearMessages(conversationId);
+      return true;
+    } catch (e) {
+      if (kDebugMode) debugPrint('Erreur leaveGroup: $e');
+      return false;
+    }
+  }
+
+  Future<bool> toggleMuteConversation(String conversationId, bool mute) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return false;
+    try {
+      await _client
+          .from('conversation_participants')
+          .update({'muted': mute})
+          .eq('conversation_id', conversationId)
+          .eq('user_id', userId);
+      final idx = conversations.indexWhere((c) => c.id == conversationId);
+      if (idx != -1) {
+        final conv = conversations[idx];
+        final pIdx = conv.participants.indexWhere((p) => p.userId == userId);
+        if (pIdx != -1) {
+          final p = conv.participants[pIdx];
+          final updatedP = ConversationParticipant(
+            conversationId: p.conversationId,
+            userId: p.userId,
+            role: p.role,
+            joinedAt: p.joinedAt,
+            lastReadMessageId: p.lastReadMessageId,
+            muted: mute,
+            profile: p.profile,
+          );
+          final newParticipants = List<ConversationParticipant>.from(conv.participants);
+          newParticipants[pIdx] = updatedP;
+          conversations[idx] = conv.copyWith(participants: newParticipants);
+          conversations.refresh();
+        }
+      }
+      return true;
+    } catch (e) {
+      if (kDebugMode) debugPrint('Erreur toggleMuteConversation: $e');
+      return false;
     }
   }
 
@@ -1113,12 +1398,22 @@ class MessagingService extends GetxService {
   }
 
   void addLocalMessage(String conversationId, Message message) {
+    var msgToAdd = message;
+    if (msgToAdd.replyToId != null && msgToAdd.replyTo == null) {
+      final list = messagesByConversation[conversationId];
+      if (list != null) {
+        final parent = list.firstWhereOrNull((m) => m.id == msgToAdd.replyToId);
+        if (parent != null) {
+          msgToAdd = msgToAdd.copyWith(replyTo: parent);
+        }
+      }
+    }
     messagesByConversation.update(
       conversationId,
-      (list) => [...list, message]..sort((a, b) => a.createdAt.compareTo(b.createdAt)),
-      ifAbsent: () => [message],
+      (list) => [...list, msgToAdd]..sort((a, b) => a.createdAt.compareTo(b.createdAt)),
+      ifAbsent: () => [msgToAdd],
     );
-    _updateConversationLastMessage(conversationId, message);
+    _updateConversationLastMessage(conversationId, msgToAdd);
   }
 
   Future<Message?> sendVoiceMessage({
@@ -1146,5 +1441,143 @@ class MessagingService extends GetxService {
       if (kDebugMode) print('Erreur sendVoiceMessage: $e');
       return null;
     }
+  }
+
+  // ===========================================================================
+  // WhatsApp Pinned Conversations (Épinglage max 3)
+  // ===========================================================================
+  static const String _pinnedPrefsKey = 'chatme_pinned_conversations';
+
+  Future<void> _loadPinnedConversations() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_pinnedPrefsKey) ?? [];
+      pinnedConversationIds.value = list;
+    } catch (_) {}
+  }
+
+  bool isPinned(String conversationId) => pinnedConversationIds.contains(conversationId);
+
+  Future<bool> togglePinConversation(String conversationId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (pinnedConversationIds.contains(conversationId)) {
+        pinnedConversationIds.remove(conversationId);
+        await prefs.setStringList(_pinnedPrefsKey, pinnedConversationIds.toList());
+        return true;
+      } else {
+        if (pinnedConversationIds.length >= 3) {
+          return false; // limite WhatsApp max 3
+        }
+        pinnedConversationIds.add(conversationId);
+        await prefs.setStringList(_pinnedPrefsKey, pinnedConversationIds.toList());
+        return true;
+      }
+    } catch (_) {
+      return false;
+    }
+  }
+
+  List<Conversation> get sortedConversations {
+    final list = List<Conversation>.from(conversations);
+    list.sort((a, b) {
+      final aPinned = isPinned(a.id);
+      final bPinned = isPinned(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return b.updatedAt.compareTo(a.updatedAt);
+    });
+    return list;
+  }
+
+  // ===========================================================================
+  // WhatsApp / Meta Emoji Reactions
+  // ===========================================================================
+  final Map<String, RealtimeChannel> _activeRoomChannels = {};
+
+  void subscribeToConversationRoom(String conversationId) {
+    if (_activeRoomChannels.containsKey(conversationId)) return;
+    final chan = _client.channel('chat_realtime_$conversationId');
+    chan.onBroadcast(
+      event: 'reaction',
+      callback: (payload) {
+        final messageId = payload['message_id'] as String?;
+        final reactionsMap = payload['reactions'] as Map?;
+        if (messageId == null) return;
+
+        final list = messagesByConversation[conversationId];
+        if (list == null) return;
+        final idx = list.indexWhere((m) => m.id == messageId);
+        if (idx == -1) return;
+
+        Map<String, List<String>>? parsed;
+        if (reactionsMap != null) {
+          parsed = reactionsMap.map((k, v) => MapEntry(
+                k.toString(),
+                (v as List?)?.map((e) => e.toString()).toList() ?? <String>[],
+              ));
+        }
+
+        list[idx] = list[idx].copyWith(reactions: parsed);
+        messagesByConversation.refresh();
+      },
+    ).subscribe();
+    _activeRoomChannels[conversationId] = chan;
+  }
+
+  void unsubscribeFromConversationRoom(String conversationId) {
+    _activeRoomChannels[conversationId]?.unsubscribe();
+    _activeRoomChannels.remove(conversationId);
+  }
+
+  Future<void> toggleReaction({
+    required String conversationId,
+    required String messageId,
+    required String emoji,
+  }) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    final list = messagesByConversation[conversationId];
+    if (list == null) return;
+    final idx = list.indexWhere((m) => m.id == messageId);
+    if (idx == -1) return;
+
+    final currentMsg = list[idx];
+    final currentReactions = Map<String, List<String>>.from(
+      currentMsg.reactions?.map((k, v) => MapEntry(k, List<String>.from(v))) ?? {},
+    );
+
+    final usersForEmoji = currentReactions[emoji] ?? <String>[];
+    if (usersForEmoji.contains(userId)) {
+      usersForEmoji.remove(userId);
+      if (usersForEmoji.isEmpty) {
+        currentReactions.remove(emoji);
+      } else {
+        currentReactions[emoji] = usersForEmoji;
+      }
+    } else {
+      usersForEmoji.add(userId);
+      currentReactions[emoji] = usersForEmoji;
+    }
+
+    final updated = currentMsg.copyWith(reactions: currentReactions);
+    list[idx] = updated;
+    messagesByConversation.refresh();
+
+    // Cache offline
+    await _cacheMessagesRaw(conversationId, list);
+
+    // Diffusion temps réel aux autres participants
+    try {
+      final chan = _activeRoomChannels[conversationId] ?? _client.channel('chat_realtime_$conversationId');
+      await chan.sendBroadcastMessage(
+        event: 'reaction',
+        payload: {
+          'message_id': messageId,
+          'reactions': currentReactions,
+        },
+      );
+    } catch (_) {}
   }
 }

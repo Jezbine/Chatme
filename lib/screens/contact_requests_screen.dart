@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:chatme/services/contacts_service.dart';
+import 'package:chatme/core/utils/string_extension.dart';
 import 'package:chatme/core/theme/chatme_theme.dart';
 
 class ContactRequestsScreen extends StatelessWidget {
@@ -30,7 +31,7 @@ class ContactRequestsScreen extends StatelessWidget {
               Text('Reçues (${incoming.length})', style: const TextStyle(fontWeight: FontWeight.w700, color: ChatMeColors.violet)),
               const SizedBox(height: 8),
               ...incoming.map((r) => Card(child: ListTile(
-                    leading: CircleAvatar(backgroundColor: ChatMeColors.violet, child: Text((r.fromName ?? '?').substring(0,1).toUpperCase(), style: const TextStyle(color: Colors.white))),
+                    leading: CircleAvatar(backgroundColor: ChatMeColors.violet, child: Text((r.fromName ?? '?').initials, style: const TextStyle(color: Colors.white))),
                     title: Text(r.fromName ?? r.fromUserId.substring(0,8)),
                     subtitle: Text('Il y a ${_timeAgo(r.createdAt)}'),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [

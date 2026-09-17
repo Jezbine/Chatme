@@ -153,22 +153,39 @@ class _AppLockScreenState extends State<AppLockScreen> {
         ? 'Code confidentiel à 4 chiffres'
         : 'Déverrouillez pour accéder à vos conversations';
 
+    final canGoBack = widget.mode == 'set' || (Navigator.canPop(context) && !lock.isLocked);
+
     return Scaffold(
       backgroundColor: ChatMeColors.violet,
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 60),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+              child: Row(
+                children: [
+                  if (canGoBack)
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    )
+                  else
+                    const SizedBox(width: 48, height: 48),
+                  const Spacer(),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
             Container(
-              width: 96,
-              height: 96,
+              width: 88,
+              height: 88,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(28),
+                borderRadius: BorderRadius.circular(26),
               ),
-              child: const Icon(Icons.chat, size: 52, color: ChatMeColors.violet),
+              child: const Icon(Icons.chat, size: 48, color: ChatMeColors.violet),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             Text(
               title,
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white),

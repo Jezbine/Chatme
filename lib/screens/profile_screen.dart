@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../core/theme/chatme_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/settings_service.dart';
 import '../../models/user_profile.dart';
 import '../../widgets/chat_header.dart';
 import '../../widgets/chat_sheets.dart';
 import '../../widgets/auth_wrapper.dart';
+import '../../core/utils/format_utils.dart';
 import 'my_qr_screen.dart';
+import 'contacts_screen.dart';
 import 'settings_screen.dart';
 import 'security_policy_screen.dart';
 import 'avatar_viewer_screen.dart';
@@ -92,8 +95,8 @@ class ProfileScreen extends StatelessWidget {
                     ),
                     _MenuItem(
                       icon: Icons.contacts_outlined,
-                      label: 'Contacts',
-                      onTap: () => showContactsSheet(context),
+                      label: 'Contacts & Répertoire',
+                      onTap: () => Get.to(() => const ContactsScreen()),
                     ),
                     _MenuItem(
                       icon: Icons.camera_alt_outlined,
@@ -211,13 +214,22 @@ class ProfileScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Text(
-            user.displayName ?? user.phoneNumber,
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: cs.onSurface),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                user.displayName ?? (user.phoneNumber.isNotEmpty ? FormatUtils.formatBeninPhone(user.phoneNumber) : 'Utilisateur ChatME'),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: cs.onSurface),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.verified, color: ChatMeColors.cProfil, size: 18),
+            ],
           ),
           const SizedBox(height: 2),
           Text(
-            maskPhone(user.phoneNumber),
+            user.phoneNumber.isNotEmpty
+                ? FormatUtils.formatBeninPhone(user.phoneNumber)
+                : (user.email ?? ''),
             style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
           ),
           if (user.bio != null && user.bio!.isNotEmpty) ...[

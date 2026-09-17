@@ -59,6 +59,7 @@ class WalletService extends GetxService {
     _initFedaPay();
   }
 
+  // Initialisation FedaPay Live (via FedaPayConfig).
   void _initFedaPay() {
     if (!FedaPayConfig.isConfigured) {
       if (kDebugMode) {
@@ -173,6 +174,9 @@ class WalletService extends GetxService {
     }
   }
 
+  /// Rafraîchit le solde et les transactions depuis Supabase
+  Future<void> refreshBalance() => _fetchFromSupabase();
+
   void _subscribeRealtime() {
     try {
       final client = Supabase.instance.client;
@@ -266,7 +270,7 @@ class WalletService extends GetxService {
       if (kDebugMode) debugPrint('[Wallet] FEDA_API_KEY manquante -> recharge bloquée');
       try {
         if (!Get.testMode) {
-          Get.snackbar('Recharge indisponible', 'FedaPay non configuré. Veuillez renseigner votre clé dans FedaPayConfig ou via --dart-define.',
+          Get.snackbar('Recharge indisponible', 'FedaPay Live non configuré. Veuillez renseigner votre clé API FedaPay.',
               snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.white, colorText: Colors.black, duration: const Duration(seconds: 4));
         }
       } catch (_) {}
@@ -274,14 +278,18 @@ class WalletService extends GetxService {
     }
     paymentStatus.value = 'pending';
     try {
-      // Nettoyage et normalisation du numéro de téléphone
+      // Nettoyage et normalisation du numéro de téléphone Bénin (10 chiffres)
       String? cleanPhone;
       if (phoneNumber != null && phoneNumber.trim().isNotEmpty) {
         cleanPhone = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
-        if (cleanPhone.startsWith('00229') && cleanPhone.length > 10) {
+        if (cleanPhone.startsWith('00229')) {
           cleanPhone = cleanPhone.substring(5);
-        } else if (cleanPhone.startsWith('229') && cleanPhone.length > 8) {
+        } else if (cleanPhone.startsWith('229')) {
           cleanPhone = cleanPhone.substring(3);
+        }
+        // Conversion automatique de l'ancien format 8 chiffres vers 10 chiffres (préfixe 01)
+        if (cleanPhone.length == 8) {
+          cleanPhone = '01$cleanPhone';
         }
       }
 
@@ -307,6 +315,15 @@ class WalletService extends GetxService {
 
       final effectiveMode = mode ?? 'mtn_open';
 
+      String? currentUserId;
+      if (Get.isRegistered<AuthService>()) {
+        currentUserId = AuthService.to.currentUser.value?.id;
+      }
+      final metadata = <String, dynamic>{
+        'app': 'chatme',
+        if (currentUserId != null && currentUserId.isNotEmpty) 'user_id': currentUserId,
+      };
+
       // 1. Création de la transaction sur FedaPay
       ApiResponse<Transaction>? res;
       try {
@@ -317,6 +334,7 @@ class WalletService extends GetxService {
             description: 'Recharge portefeuille ChatMe',
             callbackUrl: FedaPayConfig.callbackUrl,
             customer: customer,
+            customMetadata: metadata,
           ),
         );
       } catch (createErr) {
@@ -328,6 +346,7 @@ class WalletService extends GetxService {
             currency: CurrencyIso(iso: 'XOF'),
             description: 'Recharge portefeuille ChatMe',
             callbackUrl: FedaPayConfig.callbackUrl,
+            customMetadata: metadata,
           ),
         );
       }
@@ -336,20 +355,32 @@ class WalletService extends GetxService {
         throw Exception('createTransaction failed (code ${res.statusCode})');
       }
       final txId = res.data!.id;
+
+      // 2. Générer impérativement le token et l'URL de paiement FedaPay (indispensable pour redirection & code)
       String? url = res.data!.paymentUrl;
       String? token = res.data!.paymentToken;
 
+      try {
+        final tokenRes = await FedaFlutter.instance.transactions.getTransactionToken(txId);
+        if (tokenRes.isSuccessful && tokenRes.data != null) {
+          token = tokenRes.data!.token;
+          url = tokenRes.data!.url;
+          if (kDebugMode) debugPrint('[Wallet] Token et URL FedaPay générés: url=$url token=$token');
+        }
+      } catch (tokenErr) {
+        if (kDebugMode) debugPrint('[Wallet] getTransactionToken erreur: $tokenErr');
+      }
+
+      // Reconstitution de l'URL sécurisée FedaPay si seul le token est renvoyé
+      if ((url == null || url.isEmpty) && token != null && token.isNotEmpty) {
+        url = 'https://checkout.fedapay.com/$token';
+      }
+
       bool directPaymentInitiated = false;
 
-      // 2. Si Mobile Money (MTN / Moov) avec numéro, initier le paiement direct USSD push
-      if (cleanPhone != null && cleanPhone.isNotEmpty && (effectiveMode == 'mtn_open' || effectiveMode == 'moov')) {
+      // 3. Si Mobile Money (MTN / Moov / Celtiis) avec numéro, initier directPayment
+      if (cleanPhone != null && cleanPhone.isNotEmpty && (effectiveMode == 'mtn_open' || effectiveMode == 'moov' || effectiveMode == 'sbin')) {
         try {
-          if (token == null || token.isEmpty) {
-            if (url != null && url.contains('fedapay.com/')) {
-              token = url.split('fedapay.com/').last.split('?').first;
-            }
-          }
-
           if (token != null && token.isNotEmpty) {
             if (kDebugMode) debugPrint('[Wallet] Envoi directPayment mode=$effectiveMode pour $cleanPhone');
             final directRes = await FedaFlutter.instance.transactions.directPayment(
@@ -370,24 +401,16 @@ class WalletService extends GetxService {
             }
           }
         } catch (e) {
-          if (kDebugMode) debugPrint('[Wallet] directPayment exception ($e), repli sur URL');
+          if (kDebugMode) debugPrint('[Wallet] directPayment exception: $e');
         }
       }
 
-      // Si le paiement direct n'a pas été lancé (mode carte ou repli), ouvrir l'URL
-      if (!directPaymentInitiated && url != null && url.isNotEmpty) {
-        try {
-          if (kDebugMode) debugPrint('[Wallet] Ouverture page web de paiement: $url');
-          final uri = Uri.parse(url);
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
-          }
-        } catch (e) {
-          if (kDebugMode) debugPrint('[Wallet] launchUrl échoué: $e');
-        }
+      // 4. Lancer immédiatement la redirection vers la page de paiement & confirmation FedaPay
+      if (url != null && url.isNotEmpty) {
+        await _launchPaymentUrl(url);
       }
 
-      // 3. Afficher le volet d'attente interactif avec auto-vérification et confirmation
+      // 5. Afficher le volet d'attente interactif avec auto-vérification et bouton de réouverture
       _showWaitingForPaymentSheet(
         txId.toString(),
         amount,
@@ -410,6 +433,28 @@ class WalletService extends GetxService {
     }
   }
 
+  /// Ouvre l'URL de paiement dans le navigateur externe ou interne avec fallbacks
+  Future<bool> _launchPaymentUrl(String url) async {
+    try {
+      if (kDebugMode) debugPrint('[Wallet] Lancement redirection FedaPay: $url');
+      final uri = Uri.parse(url);
+      bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        launched = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+      }
+      return launched;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[Wallet] launchUrl exception: $e, repli sur platformDefault');
+      try {
+        final uri = Uri.parse(url);
+        return await launchUrl(uri, mode: LaunchMode.platformDefault);
+      } catch (e2) {
+        if (kDebugMode) debugPrint('[Wallet] fallback launchUrl échoué: $e2');
+        return false;
+      }
+    }
+  }
+
   /// Affiche un volet d'attente convivial avec vérification automatique toutes les 4s
   void _showWaitingForPaymentSheet(
     String txId,
@@ -426,6 +471,7 @@ class WalletService extends GetxService {
     String operatorName = 'Mobile Money';
     if (mode == 'mtn_open') operatorName = 'MTN Mobile Money';
     if (mode == 'moov') operatorName = 'Moov Money';
+    if (mode == 'sbin') operatorName = 'Celtiis Cash';
     if (mode == 'card') operatorName = 'Carte bancaire';
 
     // Polling automatique en arrière-plan toutes les 4s (durant 2 minutes max)
@@ -540,32 +586,51 @@ class WalletService extends GetxService {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Text(
-                      'Finalisez votre paiement sur la page sécurisée FedaPay, puis revenez ici.',
+                      'Une page FedaPay a été ouverte pour confirmer votre code Mobile Money. Si elle ne s\'est pas affichée, cliquez sur le bouton ci-dessous.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 12.5, color: Colors.black87, height: 1.3),
                     ),
                   ),
                 ],
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
+                if (paymentUrl != null && paymentUrl.isNotEmpty) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.open_in_browser, color: Colors.white, size: 20),
+                      label: const Text(
+                        'Ouvrir la page de confirmation du code',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13.5),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: ChatMeColors.violet,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                      onPressed: () => _launchPaymentUrl(paymentUrl),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 Obx(() => SizedBox(
                       width: double.infinity,
                       height: 46,
-                      child: ElevatedButton.icon(
+                      child: OutlinedButton.icon(
                         icon: isChecking.value
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(strokeWidth: 2, color: ChatMeColors.violet),
                               )
-                            : const Icon(Icons.check_circle_outline, color: Colors.white, size: 20),
+                            : const Icon(Icons.check_circle_outline, color: ChatMeColors.violet, size: 20),
                         label: Text(
-                          isChecking.value ? 'Vérification en cours...' : 'J\'ai validé mon paiement',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          isChecking.value ? 'Vérification en cours...' : 'J\'ai validé mon code de paiement',
+                          style: const TextStyle(color: ChatMeColors.violet, fontWeight: FontWeight.bold),
                         ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: ChatMeColors.violet,
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: ChatMeColors.violet, width: 1.5),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          elevation: 0,
                         ),
                         onPressed: isChecking.value
                             ? null
@@ -591,7 +656,7 @@ class WalletService extends GetxService {
                                 } else {
                                   Get.snackbar(
                                     'Paiement en attente',
-                                    'Le paiement n\'a pas encore été validé par l\'opérateur. Veuillez taper votre code secret sur votre téléphone et réessayer.',
+                                    'Le paiement n\'a pas encore été validé par l\'opérateur. Veuillez taper votre code secret sur votre téléphone ou la page web et réessayer.',
                                     snackPosition: SnackPosition.BOTTOM,
                                     backgroundColor: Colors.white,
                                     colorText: Colors.black,
@@ -601,24 +666,6 @@ class WalletService extends GetxService {
                               },
                       ),
                     )),
-                if (paymentUrl != null && paymentUrl.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  TextButton.icon(
-                    icon: const Icon(Icons.open_in_browser, size: 16, color: ChatMeColors.violet),
-                    label: const Text(
-                      'Page de paiement web (si pas de notification USSD)',
-                      style: TextStyle(fontSize: 12, color: ChatMeColors.violet, fontWeight: FontWeight.w600),
-                    ),
-                    onPressed: () async {
-                      try {
-                        final uri = Uri.parse(paymentUrl);
-                        if (await canLaunchUrl(uri)) {
-                          await launchUrl(uri, mode: LaunchMode.externalApplication);
-                        }
-                      } catch (_) {}
-                    },
-                  ),
-                ],
                 const SizedBox(height: 4),
                 TextButton(
                   onPressed: () {
@@ -686,7 +733,7 @@ class WalletService extends GetxService {
 
   // ignore: unused_element
   Future<void> _completeFedapayRecharge(int amount, {String? txId}) async {
-    // Fallback sandbox uniquement : crédit direct via RPC (à ne pas utiliser en live)
+    // Crédit via RPC wallet_deposit (sécurisé)
     if (_supabaseAvailable) {
       final newBal = await _rpcDeposit(amount, 'Recharge FedaPay${txId != null ? ' #$txId' : ''}');
       if (newBal != null) {
@@ -694,7 +741,7 @@ class WalletService extends GetxService {
         paymentStatus.value = 'success';
         await _fetchFromSupabase();
         await _persistLocal();
-        Get.snackbar('Recharge réussie (sandbox)', '+${_fmt(amount)} FCFA — Solde: ${_fmt(newBal)} FCFA',
+        Get.snackbar('Recharge réussie', '+${_fmt(amount)} FCFA — Solde: ${_fmt(newBal)} FCFA',
             snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.white, colorText: Colors.black);
         return;
       }

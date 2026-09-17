@@ -3,12 +3,15 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
+import 'package:chatme/firebase_options.dart';
 import 'supabase_config.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
     if (kDebugMode) print('[Firebase] Message en arrière-plan reçu: ${message.messageId} - ${message.notification?.title}');
     // Afficher notif locale même en background
     try {
@@ -41,7 +44,9 @@ class FirebaseConfig {
   static Future<void> init() async {
     try {
       if (kDebugMode) print('[Firebase] Initialisation en cours...');
-      await Firebase.initializeApp();
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
 
       // Configurer le handler de messages en arrière-plan
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);

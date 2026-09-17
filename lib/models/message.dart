@@ -19,6 +19,8 @@ class Message {
   final DateTime updatedAt;
   final bool isEdited;
   final UserProfile? sender;
+  final Map<String, List<String>>? reactions;
+  final Message? replyTo;
 
   Message({
     required this.id,
@@ -35,12 +37,22 @@ class Message {
     required this.updatedAt,
     this.isEdited = false,
     this.sender,
+    this.reactions,
+    this.replyTo,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
     // Défensif : last_message côté Supabase ne renvoie pas conversation_id ni updated_at
     final rawType = (json['type'] as String?) ?? 'text';
     final rawStatus = (json['status'] as String?) ?? 'sent';
+    Map<String, List<String>>? parsedReactions;
+    if (json['reactions'] is Map) {
+      parsedReactions = (json['reactions'] as Map).map((k, v) => MapEntry(
+            k.toString(),
+            (v as List?)?.map((e) => e.toString()).toList() ?? <String>[],
+          ));
+    }
+
     return Message(
       id: (json['id'] as String?) ?? '',
       conversationId: (json['conversation_id'] as String?) ?? (json['conversationId'] as String?) ?? '',
@@ -61,12 +73,21 @@ class Message {
               ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
               : DateTime.now()),
       isEdited: (json['is_edited'] as bool?) ?? false,
+      reactions: parsedReactions,
     );
   }
 
   factory Message.fromJsonWithSender(Map<String, dynamic> json) {
     final rawType = (json['type'] as String?) ?? 'text';
     final rawStatus = (json['status'] as String?) ?? 'sent';
+    Map<String, List<String>>? parsedReactions;
+    if (json['reactions'] is Map) {
+      parsedReactions = (json['reactions'] as Map).map((k, v) => MapEntry(
+            k.toString(),
+            (v as List?)?.map((e) => e.toString()).toList() ?? <String>[],
+          ));
+    }
+
     return Message(
       id: (json['id'] as String?) ?? '',
       conversationId: (json['conversation_id'] as String?) ?? '',
@@ -89,6 +110,7 @@ class Message {
       sender: json['sender'] != null
           ? UserProfile.fromJson(json['sender'] as Map<String, dynamic>)
           : null,
+      reactions: parsedReactions,
     );
   }
 
@@ -106,6 +128,7 @@ class Message {
         'created_at': createdAt.toIso8601String(),
         'updated_at': updatedAt.toIso8601String(),
         'is_edited': isEdited,
+        if (reactions != null) 'reactions': reactions,
       };
 
   Message copyWith({
@@ -123,6 +146,8 @@ class Message {
     DateTime? updatedAt,
     bool? isEdited,
     UserProfile? sender,
+    Map<String, List<String>>? reactions,
+    Message? replyTo,
   }) =>
       Message(
         id: id ?? this.id,
@@ -139,6 +164,8 @@ class Message {
         updatedAt: updatedAt ?? this.updatedAt,
         isEdited: isEdited ?? this.isEdited,
         sender: sender ?? this.sender,
+        reactions: reactions ?? this.reactions,
+        replyTo: replyTo ?? this.replyTo,
       );
 
   bool isMine(String currentUserId) => senderId == currentUserId;

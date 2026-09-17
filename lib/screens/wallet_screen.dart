@@ -187,8 +187,13 @@ class WalletScreen extends StatelessWidget {
       final userPhone = AuthService.to.currentUser.value?.phoneNumber;
       if (userPhone != null && userPhone.isNotEmpty) {
         String clean = userPhone.replaceAll(RegExp(r'[^0-9]'), '');
-        if (clean.startsWith('229') && clean.length > 8) {
+        if (clean.startsWith('00229')) {
+          clean = clean.substring(5);
+        } else if (clean.startsWith('229')) {
           clean = clean.substring(3);
+        }
+        if (clean.length == 8) {
+          clean = '01$clean';
         }
         phoneController.text = clean;
       }
@@ -213,7 +218,7 @@ class WalletScreen extends StatelessWidget {
             child: SingleChildScrollView(
               child: Obx(() {
                 final mode = selectedMode.value;
-                final isMobileMoney = mode == 'mtn_open' || mode == 'moov';
+                final isMobileMoney = mode == 'mtn_open' || mode == 'moov' || mode == 'sbin';
 
                 return Column(
                   mainAxisSize: MainAxisSize.min,
@@ -355,6 +360,20 @@ class WalletScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
 
+                    // Celtiis Cash
+                    _rechargePaymentTile(
+                      title: 'Celtiis Cash Bénin',
+                      subtitle: 'Notification directe sur votre mobile Celtiis',
+                      badgeText: 'SBIN',
+                      badgeColor: const Color(0xFF005BAC),
+                      badgeTextColor: Colors.white,
+                      isSelected: mode == 'sbin',
+                      icon: Icons.phone_android,
+                      iconColor: const Color(0xFF005BAC),
+                      onTap: () => selectedMode.value = 'sbin',
+                    ),
+                    const SizedBox(height: 8),
+
                     // Carte Bancaire
                     _rechargePaymentTile(
                       title: 'Carte bancaire / Autre',
@@ -396,7 +415,7 @@ class WalletScreen extends StatelessWidget {
                             child: const Text('+229', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.grey)),
                           ),
                           prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-                          hintText: '97 00 00 00',
+                          hintText: '01 97 00 00 00',
                           filled: true,
                           fillColor: Colors.grey.shade100,
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300)),
@@ -459,8 +478,8 @@ class WalletScreen extends StatelessWidget {
                                 final phone = phoneController.text.trim();
                                 if (isMobileMoney) {
                                   final clean = phone.replaceAll(RegExp(r'[^0-9]'), '');
-                                  if (clean.length < 8) {
-                                    errorMessage.value = 'Veuillez saisir un numéro de téléphone valide (8 chiffres min)';
+                                  if (clean.length != 10 && clean.length != 8) {
+                                    errorMessage.value = 'Le numéro béninois doit comporter 10 chiffres (ex: 01 97 00 00 00)';
                                     return;
                                   }
                                 }

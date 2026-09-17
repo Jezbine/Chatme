@@ -1,14 +1,15 @@
-/// Configuration centralisée FedaPay pour ChatMe.
-/// Permet de basculer facilement entre Sandbox et Live.
+/// Configuration centralisée FedaPay pour ChatMe (Mode LIVE).
+/// Permet les paiements réels via FedaPay Live.
+/// Surchargeable au build via: --dart-define=FEDA_API_KEY=... --dart-define=FEDA_ENV=live
 class FedaPayConfig {
-  /// Clé API FedaPay (sk_live_... pour transactions directes SDK)
+  /// Clé API FedaPay Live (sk_live_... ou pk_live_...).
   /// Peut être surchargée au build via: --dart-define=FEDA_API_KEY=sk_live_...
   static const String apiKey = String.fromEnvironment(
     'FEDA_API_KEY',
-    defaultValue: 'sk_live_3S9-sh1MNdfKW0699mhdoVqq',
+    defaultValue: '',
   );
 
-  /// Environnement : 'live' pour les vrais paiements, 'sandbox' pour les tests
+  /// Environnement : 'live' par défaut (production / argent réel).
   /// Surchargeable via: --dart-define=FEDA_ENV=live
   static const String environment = String.fromEnvironment(
     'FEDA_ENV',
@@ -16,7 +17,10 @@ class FedaPayConfig {
   );
 
   /// Indique si FedaPay est configuré en mode production (argent réel)
-  static bool get isLive => environment.toLowerCase() == 'live';
+  static bool get isLive =>
+      environment.toLowerCase() == 'live' ||
+      apiKey.startsWith('sk_live_') ||
+      apiKey.startsWith('pk_live_');
 
   /// Indique si une clé valide est renseignée
   static bool get isConfigured =>

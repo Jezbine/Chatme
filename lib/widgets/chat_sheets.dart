@@ -13,6 +13,8 @@ import 'package:chatme/services/messaging_service.dart';
 import 'package:chatme/services/auth_service.dart';
 import 'package:chatme/models/conversation.dart';
 import 'package:chatme/models/user_profile.dart';
+import 'package:chatme/screens/create_group_screen.dart';
+import 'package:chatme/screens/contacts_screen.dart';
 
 Widget _avatar(String initials, Color color, {double size = 36, double radius = 18}) {
   return Container(
@@ -92,6 +94,15 @@ void showNewSheet(BuildContext context) {
           },
         ),
         _ActionRow(
+          icon: Icons.contacts,
+          iconColor: ChatMeColors.cAppel,
+          label: 'Contacts & Répertoire',
+          onTap: () {
+            Get.back();
+            Get.to(() => const ContactsScreen());
+          },
+        ),
+        _ActionRow(
           icon: Icons.camera_alt,
           iconColor: ChatMeColors.cProfil,
           label: 'Prendre une photo',
@@ -106,7 +117,7 @@ void showNewSheet(BuildContext context) {
           label: 'Créer un groupe',
           onTap: () {
             Get.back();
-            showContactsSheet(context);
+            Get.to(() => const CreateGroupScreen());
           },
         ),
         _ActionRow(
@@ -162,6 +173,22 @@ void showContactsSheet(BuildContext context, {bool selectable = true}) {
                 ),
               ),
             ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+          child: OutlinedButton.icon(
+            onPressed: () {
+              Get.back();
+              Get.to(() => const ContactsScreen());
+            },
+            icon: const Icon(Icons.contacts, size: 18),
+            label: const Text('Ouvrir le répertoire complet'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: ChatMeColors.ink,
+              side: BorderSide(color: ChatMeColors.border),
+              minimumSize: const Size.fromHeight(40),
+            ),
           ),
         ),
         const Padding(
@@ -274,52 +301,115 @@ void showCameraSheet(BuildContext context) {
 
 void showTextPostSheet(BuildContext context) {
   final ctrl = TextEditingController();
+  File? selectedPhoto;
+  final picker = ImagePicker();
+
   Get.bottomSheet(
-    _Sheet(
-      title: 'Nouveau moment',
-      children: [
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: ChatMeColors.violetPale,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: TextField(
-            controller: ctrl,
-            maxLines: 5,
-            minLines: 3,
-            decoration: const InputDecoration.collapsed(
-              hintText: 'Que voulez-vous partager ?',
-              hintStyle: TextStyle(color: ChatMeColors.inkSoft),
+    StatefulBuilder(builder: (ctx, setSheetState) {
+      return _Sheet(
+        title: 'Nouveau moment',
+        children: [
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: ChatMeColors.violetPale,
+              borderRadius: BorderRadius.circular(14),
             ),
-            style: const TextStyle(fontSize: 14, color: ChatMeColors.ink),
+            child: TextField(
+              controller: ctrl,
+              maxLines: 4,
+              minLines: 2,
+              decoration: const InputDecoration.collapsed(
+                hintText: 'Que voulez-vous partager ?',
+                hintStyle: TextStyle(color: ChatMeColors.inkSoft),
+              ),
+              style: const TextStyle(fontSize: 14, color: ChatMeColors.ink),
+            ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          child: ElevatedButton(
-            onPressed: () {
-              final text = ctrl.text.trim();
-              if (text.isEmpty) {
-                Get.snackbar('Erreur', 'Écrivez quelque chose', snackPosition: SnackPosition.BOTTOM);
-                return;
-              }
-              MomentsService.to.addMoment(text: text);
-              Get.back();
-              Get.snackbar('Moments', 'Moment publié',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: ChatMeColors.violet,
-                  colorText: Colors.white);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: ChatMeColors.violet),
-            child: const Text('Publier', style: TextStyle(color: Colors.white)),
+          if (selectedPhoto != null)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+              height: 160,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                image: DecorationImage(image: FileImage(selectedPhoto!), fit: BoxFit.cover),
+              ),
+              child: Align(
+                alignment: Alignment.topRight,
+                child: IconButton(
+                  icon: const CircleAvatar(
+                    backgroundColor: Colors.black54,
+                    radius: 14,
+                    child: Icon(Icons.close, size: 16, color: Colors.white),
+                  ),
+                  onPressed: () => setSheetState(() => selectedPhoto = null),
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+            child: Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    try {
+                      final f = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+                      if (f != null) setSheetState(() => selectedPhoto = File(f.path));
+                    } catch (_) {}
+                  },
+                  icon: const Icon(Icons.photo_library, size: 18),
+                  label: const Text('Galerie'),
+                  style: OutlinedButton.styleFrom(foregroundColor: ChatMeColors.violet),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    try {
+                      final f = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+                      if (f != null) setSheetState(() => selectedPhoto = File(f.path));
+                    } catch (_) {}
+                  },
+                  icon: const Icon(Icons.camera_alt, size: 18),
+                  label: const Text('Caméra'),
+                  style: OutlinedButton.styleFrom(foregroundColor: ChatMeColors.violet),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-      ],
-    ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            child: ElevatedButton(
+              onPressed: () {
+                final text = ctrl.text.trim();
+                if (text.isEmpty && selectedPhoto == null) {
+                  Get.snackbar('Erreur', 'Écrivez un message ou sélectionnez une photo', snackPosition: SnackPosition.BOTTOM);
+                  return;
+                }
+                MomentsService.to.addMoment(
+                  text: text.isEmpty ? 'Nouveau moment ✨' : text,
+                  photoPath: selectedPhoto?.path,
+                );
+                Get.back();
+                Get.snackbar('Moments', 'Moment publié avec succès',
+                    snackPosition: SnackPosition.BOTTOM,
+                    backgroundColor: ChatMeColors.cProfil,
+                    colorText: Colors.white);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: ChatMeColors.violet,
+                minimumSize: const Size.fromHeight(44),
+              ),
+              child: const Text('Publier', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      );
+    }),
     backgroundColor: ChatMeColors.surface,
+    isScrollControlled: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
     ),
@@ -686,8 +776,18 @@ class _PermissionBanner extends StatelessWidget {
                 Text(text, style: const TextStyle(fontSize: 12.5, color: ChatMeColors.ink)),
                 const SizedBox(height: 8),
                 GestureDetector(
-                  onTap: () => Get.snackbar('Accès contacts', 'Fonctionnalité nécessitant l\'autorisation système',
-                      snackPosition: SnackPosition.BOTTOM),
+                  onTap: () async {
+                    Get.dialog(const Center(child: CircularProgressIndicator()), barrierDismissible: false);
+                    final matched = await ContactsService.to.importDeviceContacts();
+                    if (Get.isDialogOpen == true) Get.back();
+                    if (matched.isNotEmpty) {
+                      Get.snackbar('Synchronisation réussie', '${matched.length} contact(s) ChatMe synchronisé(s) !',
+                          snackPosition: SnackPosition.BOTTOM, backgroundColor: ChatMeColors.cProfil, colorText: Colors.white);
+                    } else {
+                      Get.snackbar('Répertoire', 'Aucun nouveau contact ChatMe trouvé ou permission refusée.',
+                          snackPosition: SnackPosition.BOTTOM);
+                    }
+                  },
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                     decoration: BoxDecoration(

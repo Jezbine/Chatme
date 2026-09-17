@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chatme/core/theme/chatme_theme.dart';
 import 'package:chatme/services/status_service.dart';
+import 'package:chatme/services/messaging_service.dart';
 
 class StatusViewerScreen extends StatefulWidget {
   final String name;
@@ -34,18 +35,39 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
   double _progress = 0;
   bool _done = false;
   Timer? _timer;
+  final TextEditingController _replyCtrl = TextEditingController();
+  final FocusNode _replyFocus = FocusNode();
 
   @override
   void initState() {
     super.initState();
     _items = List.from(widget.items);
     _index = 0;
+    _replyFocus.addListener(_onFocusChange);
+    _markCurrentViewed();
     _startTimer();
+  }
+
+  void _onFocusChange() {
+    if (_replyFocus.hasFocus) {
+      _timer?.cancel();
+    } else {
+      _startTimer();
+    }
+  }
+
+  void _markCurrentViewed() {
+    if (!widget.isMine && _items.isNotEmpty && _index < _items.length) {
+      StatusService.to.markAsViewed(_items[_index].id);
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _replyFocus.removeListener(_onFocusChange);
+    _replyFocus.dispose();
+    _replyCtrl.dispose();
     super.dispose();
   }
 
@@ -75,6 +97,7 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
   void _next() {
     if (_index < _items.length - 1) {
       setState(() => _index++);
+      _markCurrentViewed();
       _startTimer();
     } else {
       _close();
@@ -87,6 +110,52 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
       return;
     }
     setState(() => _index--);
+    _markCurrentViewed();
+    _startTimer();
+  }
+
+  Future<void> _sendReaction(String emoji) async {
+    if (widget.ownerId == null || widget.ownerId!.isEmpty) return;
+    _timer?.cancel();
+    final convId = await MessagingService.to.createDirectConversation(widget.ownerId!);
+    if (convId != null) {
+      await MessagingService.to.sendMessage(
+        conversationId: convId,
+        content: '📌 A réagi $emoji à votre statut',
+      );
+      Get.snackbar(
+        'Réaction envoyée',
+        'Votre réaction $emoji a été envoyée à ${widget.name}',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: ChatMeColors.cProfil,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 2),
+      );
+    }
+    if (!_replyFocus.hasFocus) _startTimer();
+  }
+
+  Future<void> _sendReply() async {
+    final text = _replyCtrl.text.trim();
+    if (text.isEmpty || widget.ownerId == null || widget.ownerId!.isEmpty) return;
+    _timer?.cancel();
+    final convId = await MessagingService.to.createDirectConversation(widget.ownerId!);
+    if (convId != null) {
+      await MessagingService.to.sendMessage(
+        conversationId: convId,
+        content: '📌 En réponse à votre statut : $text',
+      );
+      _replyCtrl.clear();
+      _replyFocus.unfocus();
+      Get.snackbar(
+        'Message envoyé',
+        'Votre réponse a été transmise à ${widget.name}',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: ChatMeColors.cProfil,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 2),
+      );
+    }
     _startTimer();
   }
 
@@ -267,14 +336,27 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
     final item = _items[_index];
     final canEdit = widget.isMine && StatusService.to.canEditMyStatus(item);
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: const Color(0xFF12101F),
       body: GestureDetector(
         onTapUp: (d) {
+          if (_replyFocus.hasFocus) {
+            _replyFocus.unfocus();
+            return;
+          }
           final w = MediaQuery.of(context).size.width;
           if (d.localPosition.dx > w / 2) {
             _next();
           } else {
             _prev();
+          }
+        },
+        onLongPressStart: (_) {
+          _timer?.cancel();
+        },
+        onLongPressEnd: (_) {
+          if (!_replyFocus.hasFocus) {
+            _startTimer();
           }
         },
         child: Stack(
@@ -292,7 +374,7 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
                     ),
               child: _buildStatusMedia(item),
             ),
-            // Barres de progression
+            // Barres de progression et en-tête
             SafeArea(
               child: Column(
                 children: [
@@ -360,6 +442,109 @@ class _StatusViewerScreenState extends State<StatusViewerScreen> {
                 ],
               ),
             ),
+            // Barre de réponse / réactions (façon WhatsApp/Instagram)
+            if (!widget.isMine && widget.ownerId != null)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 16,
+                child: SafeArea(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Rangée de réactions émojis rapides
+                      Container(
+                        height: 38,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: [
+                            for (final emoji in ['❤️', '🔥', '😂', '😍', '👏', '😮', '🎉', '🙏'])
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: InkWell(
+                                  onTap: () => _sendReaction(emoji),
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black45,
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: Colors.white24),
+                                    ),
+                                    child: Center(
+                                      child: Text(emoji, style: const TextStyle(fontSize: 18)),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      // Barre de saisie de réponse
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(26),
+                          border: Border.all(color: Colors.white30),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _replyCtrl,
+                                focusNode: _replyFocus,
+                                style: const TextStyle(color: Colors.white, fontSize: 14),
+                                decoration: InputDecoration(
+                                  hintText: 'Répondre à ${widget.name}…',
+                                  hintStyle: const TextStyle(color: Colors.white60, fontSize: 13),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                ),
+                                onSubmitted: (_) => _sendReply(),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.send, color: Colors.white, size: 20),
+                              onPressed: _sendReply,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else if (widget.isMine)
+              Positioned(
+                bottom: 20,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.visibility_outlined, color: Colors.white70, size: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Visible par vos contacts • ${_remainingLabel(item)}',
+                            style: const TextStyle(color: Colors.white, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

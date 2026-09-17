@@ -27,16 +27,16 @@ flutter pub get
 # - Placer google-services.json (Android) et GoogleService-Info.plist (iOS)
 # - firebase_options.dart sera généré via `flutterfire configure`
 
-# 5. Lancer en sandbox FedaPay + LiveKit
-flutter run --dart-define=FEDA_API_KEY=pk_sandbox_xxx --dart-define=FEDA_ENV=sandbox --dart-define=LIVEKIT_URL=wss://xxx.livekit.cloud
+# 5. Lancer en FedaPay Live + LiveKit
+flutter run --dart-define=FEDA_API_KEY=sk_live_xxx --dart-define=FEDA_ENV=live --dart-define=LIVEKIT_URL=wss://xxx.livekit.cloud
 ```
 
 ## Variables d'environnement (dart-define)
 
 | Clé | Description |
 |-----|-------------|
-| `FEDA_API_KEY` | Clé FedaPay (pk_sandbox_ / pk_live_) |
-| `FEDA_ENV` | `sandbox` ou `live` |
+| `FEDA_API_KEY` | Clé FedaPay Live (`sk_live_...` ou `pk_live_...`) |
+| `FEDA_ENV` | Environnement (`live` par défaut) |
 | `LIVEKIT_URL` | URL serveur LiveKit (wss://...) |
 
 Supabase et Firebase sont actuellement hardcodés dans `lib/config/` (voir Audit).

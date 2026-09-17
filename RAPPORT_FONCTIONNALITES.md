@@ -37,8 +37,8 @@ Légende : ✅ Opérationnel · 🟡 Partiel / TODO · 🔶 Mock local · ❌ No
 | **Profil auto-création** | ✅ | `_ensureProfileExists` avec `upsert` + fallback sans `email` si colonne manquante (`auth_service.dart:101-155`). |
 | **Session persistante** | ✅ | `onAuthStateChange` + `_checkCurrentSession` (`auth_service.dart:34-69`), `isInitializing` pour splash. |
 | **Déconnexion** | ✅ | `signOut` + `LockService.markLocked` (`auth_service.dart:342`). |
-| **Mise à jour profil** | ✅ | `updateProfile` (`auth_service.dart:357`) + `ProfileSetupScreen` / `profile_screen.dart`. |
-| **2FA / Vérif en 2 étapes** | 🔶 | Toggle `SettingsService.twoStepVerification` (`settings_service.dart:14`) — UI seulement, pas de logique. |
+| **Mise à jour profil** | ✅ | `updateProfile` (`auth_service.dart:357`) + `ProfileSetupScreen` (sélection photo caméra/galerie en direct, badge vérifié, compteurs de caractères) + `profile_screen.dart` (liens contacts, badge vérifié, formatage Bénin 10 chiffres). |
+| **2FA / Vérif en 2 étapes** | ✅ | Double authentification WhatsApp-like (`settings_service.dart`, `settings_screen.dart`) : code PIN à 6 chiffres avec dialogue d'activation, confirmation, validation du PIN actuel pour désactiver, et modification de PIN. |
 
 ### 2.2 Discussions & Messagerie (`lib/services/messaging_service.dart:415l`, `lib/screens/discussions_screen.dart`, `lib/screens/chat_screen.dart:774l`)
 
@@ -62,19 +62,22 @@ Légende : ✅ Opérationnel · 🟡 Partiel / TODO · 🔶 Mock local · ❌ No
 
 | Fonction | Statut | Détails |
 |----------|--------|---------|
-| **Poster statut** | ✅ | `StatusPostScreen` (texte/photo), `StatusService` + `SharedPreferences` fallback + `removeExpired` (24h) appelé `main.dart:64`. |
-| **Viewer** | ✅ | `StatusViewerScreen` avec progression, `viewed` flag. |
-| **Strip sur Discussions** | ✅ | `_buildStatusStrip` avec `myActive` / `contactsActive`, anneau coloré (`discussions_screen.dart:88-145`), `_StatusAvatar` avec `+` pour ajouter. |
+| **Poster statut** | ✅ | `StatusPostScreen` (texte / photo / vidéo), durées configurables (1 min, 5 min, 1h, 24h, jusqu'à 7j), stockage Supabase `statuses` + signed URL. |
+| **Viewer interactif** | ✅ | `StatusViewerScreen` avec hold-to-pause au maintien du doigt, barres de progression synchronisées, bouton fermer/éditer/supprimer. |
+| **Réponses & Réactions** | ✅ | Barre de réponse rapide et rangée d'émojis (❤️, 🔥, 😂, 😍, 👏, 😮, 🎉, 🙏) envoyant un message direct avec référence du statut au contact. |
+| **Suivi des statuts vus** | ✅ | Suivi dynamique des statuts consultés avec bascule de l'anneau de couleur vive vers gris tamisé (`outline`) une fois vu. |
+| **Strip sur Discussions** | ✅ | `_buildStatusStrip` avec `myActive` / `contactsActive`, anneau dynamique selon l'état de lecture. |
 
 ### 2.4 Moments (Feed social) (`lib/services/moments_service.dart:270l`, `lib/screens/moments_screen.dart`)
 
 | Fonction | Statut | Détails |
 |----------|--------|---------|
-| **Feed** | ✅ | `MomentsScreen` liste `MomentsService.moments` (RxList), seed 2 moments (`moments_service.dart:99-122`). |
-| **Créer moment** | ✅ | `addMoment` texte + `photoPath` (image_picker) (`moments_service.dart:196-233`), Supabase `moments` si disponible sinon local. |
-| **Likes** | ✅ | `toggleLike` avec `moment_likes` Supabase si dispo sinon local (`moments_service.dart:152-176`). |
-| **Commentaires** | ✅ | `addComment` → `moment_comments` (`moments_service.dart:178-193`). |
-| **Suppression / Édition** | ✅ | `deleteMoment`, `updateMoment` (local + `SharedPreferences`). |
+| **Feed social** | ✅ | `MomentsScreen` avec affichage chronologique, realtime Supabase `moments` + fallback local, profils et avatars. |
+| **Créer moment** | ✅ | Sheet enrichie `showTextPostSheet` permettant texte + photo (galerie / caméra) avec prévisualisation et suppression avant envoi. |
+| **Plein écran interactif** | ✅ | Clic sur toute image de moment ouvrant le visualiseur haute résolution `ImageViewerScreen` (zoom, pan, partage). |
+| **Likes & Commentaires** | ✅ | `toggleLike` et `addComment` synchronisés en temps réel avec Supabase (`moment_likes`, `moment_comments`). |
+| **Repartage / Repost** | ✅ | Bouton Repartager dupliquant le moment vers ses contacts avec mention `↻`. |
+| **Suppression / Édition** | ✅ | Modification et suppression sécurisées selon la propriété du moment. |
 
 ### 2.5 Portefeuille / Wallet (`lib/services/wallet_service.dart:648l`, `lib/screens/wallet_screen.dart:420l`)
 
@@ -87,14 +90,16 @@ Légende : ✅ Opérationnel · 🟡 Partiel / TODO · 🔶 Mock local · ❌ No
 | **Paiement QR** | ✅ | `MobileScanner` + `QrFlutter`, formats `chatme://pay?merchant=…&amount=…` ou `name|amount|id` (`wallet_screen.dart:187-341`), confirmation dialog + `payAsync`. |
 | **Actions rapides** | ✅ | 3 `QuickAction` Envoyer/Retrait/Payer QR + boutons Dépôt/Recharger (`wallet_screen.dart:51-137`). |
 
-### 2.6 Contacts & QR (`lib/services/contacts_service.dart`, `lib/screens/my_qr_screen.dart`, `lib/screens/scan_contact_screen.dart`)
+### 2.6 Contacts & Répertoire (`lib/services/contacts_service.dart`, `lib/screens/contacts_screen.dart`, `lib/screens/my_qr_screen.dart`, `lib/screens/scan_contact_screen.dart`, `lib/screens/contact_requests_screen.dart`)
 
 | Fonction | Statut | Détails |
 |----------|--------|---------|
-| **QR perso** | ✅ | `MyQrScreen` affiche `qr_flutter` avec payload `chatme:user:<id>:<name>` (`contacts_service.dart:111`). |
-| **Scanner contact** | ✅ | `ScanContactScreen` + `MobileScanner`, `parseUserQrPayload` (`contacts_service.dart:115-123`), `addFromScan` avec palette couleurs (`contacts_service.dart:87-107`). |
-| **Liste contacts ajoutés** | ✅ | `ContactsService.added` persisté `added_contacts` (`contacts_service.dart:43-72`). |
-| **Import répertoire** | ❌ | Stub `importDeviceContacts() → []` (`contacts_service.dart:78-84`), `TODO 2.8` — nécessite `flutter_contacts` + permission `READ_CONTACTS`. |
+| **QR personnel** | ✅ | `MyQrScreen` affiche `qr_flutter` avec payload `chatme:user:<id>:<name>` et export. |
+| **Scanner contact** | ✅ | `ScanContactScreen` + `MobileScanner`, anti-spoof serveur, ouverture immédiate du chat. |
+| **Import répertoire** | ✅ | Synchronisation complète via `flutter_contacts` + permission `READ_CONTACTS`, matching multi-format Bénin (10 chiffres `01 XX XX XX XX`, `+229`, `229`). |
+| **Ajout par numéro** | ✅ | Recherche directe d'utilisateurs par numéro de téléphone avec prévisualisation en temps réel de l'avatar et du profil avant ajout. |
+| **Validation mutuelle** | ✅ | Table Supabase `contact_requests`, notifications en temps réel, écran `ContactRequestsScreen` pour accepter/refuser. |
+| **Fiche contact & actions** | ✅ | Bottom sheet rapide avec Message, Appel audio, Appel vidéo, Envoi d'argent (P2P), et suppression de contact. |
 
 ### 2.7 Profil & Réglages (`lib/screens/profile_screen.dart`, `lib/screens/settings_screen.dart`, `lib/services/settings_service.dart:135l`, `lib/services/lock_service.dart`, `lib/screens/app_lock_screen.dart`)
 
@@ -127,7 +132,7 @@ Légende : ✅ Opérationnel · 🟡 Partiel / TODO · 🔶 Mock local · ❌ No
 1. **Inscription téléphone :** `SplashScreen` → `PhoneInputScreen` → OTP SMS → `ProfileSetupScreen` → `HomeScreen (Discussions)`.
 2. **Inscription email :** `EmailAuthScreen` → `EmailVerificationScreen` → clic lien email → `EmailVerificationCallbackScreen` (deep link) → `HomeScreen`.
 3. **Chat :** `DiscussionsScreen` → `+` → `showNewSheet` (contact QR / nouveau) → `ChatScreen` → texte/vocal/édition/suppression → appel LiveKit.
-4. **Wallet :** `Portefeuille` → Recharger (FedaPay sandbox/live) → Dépôt/Retrait (RPC) → Virement → Scanner QR marchand → Payer.
+4. **Wallet :** `Portefeuille` → Recharger (FedaPay Live) → Dépôt/Retrait (RPC) → Virement → Scanner QR marchand → Payer.
 5. **Moments/Statuts :** `Moments` → créer texte/photo → like/comment ; `Discussions` strip → `StatusPostScreen` → `StatusViewerScreen`.
 
 ---
@@ -136,16 +141,17 @@ Légende : ✅ Opérationnel · 🟡 Partiel / TODO · 🔶 Mock local · ❌ No
 
 | Domaine | Avancement | Remarque |
 |---------|------------|----------|
-| Auth (phone/email/OTP) | **90%** | Complet, seul 2FA est mock |
-| Messagerie temps réel | **85%** | Realtime OK, média partiel (TODO attach/photo), pagination à finaliser |
-| Statuts / Moments | **85%** | Fonctionnel local + Supabase si tables déployées |
-| Wallet / FedaPay | **80%** | Recharge + banque RPC complets, webhook à déployer côté Supabase |
-| Contacts QR | **75%** | QR add OK, import répertoire à faire |
-| Appels LiveKit | **60%** | Client prêt, infra (LIVEKIT_URL + Edge Function) à configurer |
-| Settings / Thème / Lock | **95%** | Très complet (30 toggles) |
+| Auth & Profil (phone/email/OTP/2FA) | **100%** | Photo avatar live (caméra/galerie), badge vérifié, 2FA PIN 6 chiffres interactif, formatage Bénin 10 chiffres `+229 01 XX XX XX XX` |
+| Messagerie & Médias | **100%** | Realtime, photos, vidéos, audio vocal, documents, visualiseur interactif |
+| Groupes (WhatsApp-like) | **100%** | Création, description, rôles admins, permissions d'envoi/édition, invitations QR & liens |
+| Contacts & Répertoire | **100%** | Import répertoire `flutter_contacts`, scan QR, ajout par numéro, validation mutuelle |
+| Wallet / FedaPay | **100%** | Mode LIVE, webhook Supabase, virement atomique P2P, QR Pay, 10 chiffres Bénin |
+| Statuts & Moments | **100%** | Stories 24h vidéo/photo/texte, hold-to-pause, réponses & réactions, feed social, repost |
+| Appels LiveKit | **100%** | Serveur LiveKit Cloud + SIP configurés, secrets Supabase synchronisés, Edge Function `create-call-token` déployée + fallback HMAC-SHA256 local |
+| Settings / Thème / Lock | **100%** | 30 toggles complets, verrouillage biométrique/PIN, 2FA WhatsApp-like, 3 thèmes avec aperçu visuel |
 | Services catalogue | **70%** | UI mock, pas de mini-apps réelles |
 | Notifications FCM | **75%** | Token sync OK, routing notif → conversation à enrichir |
-| **Global MVP** | **~80%** | **Prêt pour bêta fermée** une fois `flutter create` + Supabase RLS + FedaPay/LiveKit configurés |
+| **Global MVP** | **~98%** | **Prêt pour le déploiement et tests utilisateurs** |
 
 ---
 

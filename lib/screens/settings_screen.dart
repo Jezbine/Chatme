@@ -41,7 +41,7 @@ class SettingsScreen extends StatelessWidget {
                 _Toggle('Accusés de lecture (blue ticks)', '', s.readReceipts),
                 _Toggle('Indicateur de saisie', '', s.typingIndicator),
                 _Toggle('Statut d\'activité', '', s.activityStatus),
-                _Toggle('Vérification en deux étapes', '', s.twoStepVerification),
+                const _TwoStepVerificationTile(),
                 _Toggle('Alertes de connexion', '', s.loginAlerts),
                 _Toggle('Reconnaissance faciale (tags)', '', s.faceTagging),
                 _Choice(
@@ -61,24 +61,35 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 Builder(builder: (context) {
                   final cs = Theme.of(context).colorScheme;
-                  return Obx(() => SwitchListTile(
-                    title: Text('Verrouiller l\'application',
-                        style: TextStyle(fontSize: 14, color: cs.onSurface)),
-                    subtitle: Text('Code confidentiel au démarrage et en arrière-plan',
-                        style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
-                    value: LockService.to.enabled.value,
-                    activeThumbColor: cs.primary,
-                    onChanged: (v) async {
-                    final lock = LockService.to;
-                    if (v && !lock.hasPin) {
-                      await Get.to(() => AppLockScreen(mode: 'set', onSuccess: () => Get.back()));
-                      if (lock.hasPin) await lock.setEnabled(true);
-                    } else {
-                      await lock.setEnabled(v);
-                    }
-                  },
-                ),
-              );
+                    return Obx(() => SwitchListTile(
+                      title: Text('Verrouiller l\'application',
+                          style: TextStyle(fontSize: 14, color: cs.onSurface)),
+                      subtitle: Text('Code confidentiel au démarrage et en arrière-plan',
+                          style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
+                      value: LockService.to.enabled.value,
+                      activeThumbColor: cs.primary,
+                      onChanged: (v) async {
+                        final lock = LockService.to;
+                        if (v && !lock.hasPin) {
+                          await Get.to(() => AppLockScreen(
+                                mode: 'set',
+                                onSuccess: () => Get.back(),
+                              ));
+                          if (lock.hasPin) {
+                            await lock.setEnabled(true);
+                            Get.snackbar('Sécurité', 'Verrouillage de l\'application activé',
+                                snackPosition: SnackPosition.BOTTOM);
+                          }
+                        } else {
+                          await lock.setEnabled(v);
+                          Get.snackbar(
+                            'Sécurité',
+                            v ? 'Verrouillage de l\'application activé' : 'Verrouillage de l\'application désactivé',
+                            snackPosition: SnackPosition.BOTTOM,
+                          );
+                        }
+                      },
+                    ));
                   },
                 ),
                 Builder(builder: (context) {
@@ -89,7 +100,7 @@ class SettingsScreen extends StatelessWidget {
                     final subtitleText = !lock.hasPin
                         ? 'Définissez d\'abord un code de déverrouillage'
                         : !lock.biometricAvailable.value
-                            ? 'Non disponible sur cet appareil'
+                            ? 'Non disponible ou non configuré sur cet appareil'
                             : !lock.enabled.value
                                 ? 'Activez d\'abord le verrouillage de l\'application'
                                 : 'Empreinte digitale ou reconnaissance faciale';
@@ -104,7 +115,23 @@ class SettingsScreen extends StatelessWidget {
                           value: lock.biometric.value && lock.enabled.value,
                           activeThumbColor: cs.primary,
                           onChanged: canUseBiometric
-                              ? (v) => lock.setBiometric(v)
+                              ? (v) async {
+                                  if (v) {
+                                    final ok = await lock.authenticateBiometric();
+                                    if (ok) {
+                                      await lock.setBiometric(true);
+                                      Get.snackbar('Biométrie', 'Déverrouillage biométrique activé',
+                                          snackPosition: SnackPosition.BOTTOM);
+                                    } else {
+                                      Get.snackbar('Biométrie', 'Authentification annulée ou empreinte non reconnue',
+                                          snackPosition: SnackPosition.BOTTOM);
+                                    }
+                                  } else {
+                                    await lock.setBiometric(false);
+                                    Get.snackbar('Biométrie', 'Déverrouillage biométrique désactivé',
+                                        snackPosition: SnackPosition.BOTTOM);
+                                  }
+                                }
                               : null,
                         ),
                         if (lock.biometric.value && lock.enabled.value)
@@ -140,22 +167,36 @@ class SettingsScreen extends StatelessWidget {
                 }),
                 Builder(builder: (context) {
                   final cs = Theme.of(context).colorScheme;
-                  return Column(children: [
-                    ListTile(
-                      leading: Icon(Icons.pin_outlined, color: cs.primary),
-                      title: Text('Code de déverrouillage',
-                          style: TextStyle(fontSize: 14, color: cs.onSurface)),
-                      trailing: Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
-                      onTap: () => Get.to(() => AppLockScreen(mode: 'set', onSuccess: () => Get.back())),
-                    ),
-                    ListTile(
-                      leading: Icon(Icons.policy_outlined, color: cs.primary),
-                      title: Text('Politique de confidentialité',
-                          style: TextStyle(fontSize: 14, color: cs.onSurface)),
-                      trailing: Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
-                      onTap: () => Get.to(() => const SecurityPolicyScreen()),
-                    ),
-                  ]);
+                  return Obx(() {
+                    final lock = LockService.to;
+                    return Column(children: [
+                      ListTile(
+                        leading: Icon(Icons.pin_outlined, color: cs.primary),
+                        title: Text('Code de déverrouillage',
+                            style: TextStyle(fontSize: 14, color: cs.onSurface)),
+                        subtitle: Text(
+                          lock.hasPin ? 'Modifier le code secret à 4 chiffres' : 'Définir un code secret à 4 chiffres',
+                          style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+                        ),
+                        trailing: Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+                        onTap: () => Get.to(() => AppLockScreen(
+                              mode: 'set',
+                              onSuccess: () {
+                                Get.back();
+                                Get.snackbar('Code secret', 'Code de déverrouillage enregistré avec succès',
+                                    snackPosition: SnackPosition.BOTTOM);
+                              },
+                            )),
+                      ),
+                      ListTile(
+                        leading: Icon(Icons.policy_outlined, color: cs.primary),
+                        title: Text('Politique de confidentialité',
+                            style: TextStyle(fontSize: 14, color: cs.onSurface)),
+                        trailing: Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+                        onTap: () => Get.to(() => const SecurityPolicyScreen()),
+                      ),
+                    ]);
+                  });
                 }),
               ],
             ),
@@ -317,6 +358,357 @@ class _Toggle extends StatelessWidget {
           activeThumbColor: cs.primary,
           onChanged: (v) { rx.value = v; SettingsService.to.save(); },
         ));
+  }
+}
+
+class _TwoStepVerificationTile extends StatelessWidget {
+  const _TwoStepVerificationTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final s = SettingsService.to;
+    final cs = Theme.of(context).colorScheme;
+
+    return Obx(() {
+      final isEnabled = s.twoStepVerification.value;
+
+      return Column(
+        children: [
+          SwitchListTile(
+            title: Text(
+              'Vérification en deux étapes',
+              style: TextStyle(fontSize: 14, color: cs.onSurface),
+            ),
+            subtitle: Text(
+              isEnabled
+                  ? 'Activée — Un code PIN à 6 chiffres protège votre compte'
+                  : 'Désactivée — Exiger un code PIN lors de la reconnexion',
+              style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+            ),
+            value: isEnabled,
+            activeThumbColor: cs.primary,
+            onChanged: (val) => _handleToggle(context, s, val),
+          ),
+          if (isEnabled)
+            ListTile(
+              dense: true,
+              contentPadding: const EdgeInsets.only(left: 32, right: 16),
+              leading: Icon(Icons.password, size: 20, color: cs.primary),
+              title: Text(
+                'Modifier le code PIN (6 chiffres)',
+                style: TextStyle(fontSize: 13, color: cs.primary, fontWeight: FontWeight.w600),
+              ),
+              trailing: Icon(Icons.chevron_right, size: 20, color: cs.primary),
+              onTap: () => _showChangePinDialog(context, s),
+            ),
+        ],
+      );
+    });
+  }
+
+  void _handleToggle(BuildContext context, SettingsService s, bool enable) {
+    if (enable) {
+      _showEnablePinDialog(context, s);
+    } else {
+      _showDisablePinDialog(context, s);
+    }
+  }
+
+  void _showEnablePinDialog(BuildContext context, SettingsService s) {
+    final pinController = TextEditingController();
+    final confirmController = TextEditingController();
+    String? errorText;
+
+    Get.dialog(
+      StatefulBuilder(
+        builder: (ctx, setState) {
+          final cs = Theme.of(ctx).colorScheme;
+          return AlertDialog(
+            title: const Text('Activer la vérification 2FA', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Définissez un code PIN à 6 chiffres pour sécuriser votre compte.',
+                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: pinController,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    maxLength: 6,
+                    decoration: InputDecoration(
+                      labelText: 'Code PIN (6 chiffres)',
+                      hintText: '••••••',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      counterText: '',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: confirmController,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    maxLength: 6,
+                    decoration: InputDecoration(
+                      labelText: 'Confirmer le code PIN',
+                      hintText: '••••••',
+                      prefixIcon: const Icon(Icons.lock_reset),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      counterText: '',
+                    ),
+                  ),
+                  if (errorText != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      errorText!,
+                      style: const TextStyle(color: ChatMeColors.cReactions, fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final pin = pinController.text.trim();
+                  final confirm = confirmController.text.trim();
+
+                  if (!RegExp(r'^\d{6}$').hasMatch(pin)) {
+                    setState(() {
+                      errorText = 'Le code PIN doit comporter exactement 6 chiffres.';
+                    });
+                    return;
+                  }
+                  if (pin != confirm) {
+                    setState(() {
+                      errorText = 'Les deux codes PIN ne correspondent pas.';
+                    });
+                    return;
+                  }
+
+                  await s.setTwoStepPin(pin);
+                  Get.back();
+                  Get.snackbar(
+                    'Sécurité',
+                    'Vérification en deux étapes activée avec succès',
+                    snackPosition: SnackPosition.BOTTOM,
+                    backgroundColor: Colors.green.withValues(alpha: 0.85),
+                    colorText: Colors.white,
+                  );
+                },
+                child: const Text('Activer'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showDisablePinDialog(BuildContext context, SettingsService s) {
+    final pinController = TextEditingController();
+    String? errorText;
+
+    Get.dialog(
+      StatefulBuilder(
+        builder: (ctx, setState) {
+          final cs = Theme.of(ctx).colorScheme;
+          return AlertDialog(
+            title: const Text('Désactiver la vérification 2FA', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Entrez votre code PIN actuel pour désactiver la vérification en deux étapes.',
+                    style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: pinController,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    maxLength: 6,
+                    decoration: InputDecoration(
+                      labelText: 'Code PIN actuel',
+                      hintText: '••••••',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      counterText: '',
+                    ),
+                  ),
+                  if (errorText != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      errorText!,
+                      style: const TextStyle(color: ChatMeColors.cReactions, fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: ChatMeColors.cReactions,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () async {
+                  final pin = pinController.text.trim();
+                  final valid = await s.verifyTwoStepPin(pin);
+                  if (!valid) {
+                    setState(() {
+                      errorText = 'Code PIN incorrect.';
+                    });
+                    return;
+                  }
+
+                  await s.disableTwoStep();
+                  Get.back();
+                  Get.snackbar(
+                    'Sécurité',
+                    'Vérification en deux étapes désactivée',
+                    snackPosition: SnackPosition.BOTTOM,
+                  );
+                },
+                child: const Text('Désactiver'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showChangePinDialog(BuildContext context, SettingsService s) {
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    final confirmController = TextEditingController();
+    String? errorText;
+
+    Get.dialog(
+      StatefulBuilder(
+        builder: (ctx, setState) {
+          return AlertDialog(
+            title: const Text('Changer le code PIN 2FA', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: currentController,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    maxLength: 6,
+                    decoration: InputDecoration(
+                      labelText: 'Ancien code PIN (6 chiffres)',
+                      hintText: '••••••',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      counterText: '',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: newController,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    maxLength: 6,
+                    decoration: InputDecoration(
+                      labelText: 'Nouveau code PIN (6 chiffres)',
+                      hintText: '••••••',
+                      prefixIcon: const Icon(Icons.key),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      counterText: '',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: confirmController,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    maxLength: 6,
+                    decoration: InputDecoration(
+                      labelText: 'Confirmer le nouveau code',
+                      hintText: '••••••',
+                      prefixIcon: const Icon(Icons.lock_reset),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      counterText: '',
+                    ),
+                  ),
+                  if (errorText != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      errorText!,
+                      style: const TextStyle(color: ChatMeColors.cReactions, fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final cur = currentController.text.trim();
+                  final newPin = newController.text.trim();
+                  final confirm = confirmController.text.trim();
+
+                  final validCur = await s.verifyTwoStepPin(cur);
+                  if (!validCur) {
+                    setState(() {
+                      errorText = 'L\'ancien code PIN est incorrect.';
+                    });
+                    return;
+                  }
+                  if (!RegExp(r'^\d{6}$').hasMatch(newPin)) {
+                    setState(() {
+                      errorText = 'Le nouveau PIN doit comporter 6 chiffres.';
+                    });
+                    return;
+                  }
+                  if (newPin != confirm) {
+                    setState(() {
+                      errorText = 'Les nouveaux codes PIN ne correspondent pas.';
+                    });
+                    return;
+                  }
+
+                  await s.setTwoStepPin(newPin);
+                  Get.back();
+                  Get.snackbar(
+                    'Sécurité',
+                    'Code PIN 2FA modifié avec succès',
+                    snackPosition: SnackPosition.BOTTOM,
+                    backgroundColor: Colors.green.withValues(alpha: 0.85),
+                    colorText: Colors.white,
+                  );
+                },
+                child: const Text('Enregistrer'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 }
 

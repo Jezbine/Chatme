@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:chatme/core/utils/format_utils.dart';
+import 'package:chatme/core/utils/string_extension.dart';
 import 'chat_screen.dart';
 import '../../services/messaging_service.dart';
 import '../../services/auth_service.dart';
@@ -10,8 +11,10 @@ import '../../core/theme/chatme_theme.dart';
 import '../../widgets/chat_header.dart';
 import '../../widgets/chat_sheets.dart';
 import '../../services/status_service.dart';
+import '../../services/contacts_service.dart';
 import 'status_post_screen.dart';
 import 'status_viewer_screen.dart';
+import 'contacts_screen.dart';
 
 class DiscussionsScreen extends StatefulWidget {
   const DiscussionsScreen({super.key});
@@ -50,6 +53,40 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
                     FocusScope.of(context).requestFocus(FocusNode());
                   },
                 ),
+                Obx(() {
+                  final pendingCount = ContactsService.to.incomingRequests.length;
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      HeaderIconButton(
+                        icon: Icons.people_outline,
+                        onPressed: () => Get.to(() => const ContactsScreen()),
+                      ),
+                      if (pendingCount > 0)
+                        Positioned(
+                          top: -2,
+                          right: -2,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: ChatMeColors.cReactions,
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                            child: Text(
+                              '$pendingCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                }),
               ],
             ),
             Container(
@@ -102,9 +139,10 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
                 }
                 final query = _query.value;
                 final currentUserIdLocal = Get.find<AuthService>().currentUser.value?.id ?? '';
+                final allSorted = messaging.sortedConversations;
                 final filtered = query.isEmpty
-                    ? messaging.conversations
-                    : messaging.conversations.where((conv) {
+                    ? allSorted
+                    : allSorted.where((conv) {
                         final title = conv.getTitle(currentUserIdLocal).toLowerCase();
                         final last = conv.lastMessage?.displayContent.toLowerCase() ?? '';
                         return title.contains(query) || last.contains(query);
@@ -150,7 +188,7 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
     final status = StatusService.to;
     final me = Get.find<AuthService>().currentUser.value;
     final myInitials = (me?.displayName?.isNotEmpty == true)
-        ? me!.displayName!.substring(0, 1).toUpperCase()
+        ? me!.displayName!.initials
         : 'M';
 
     return Obx(() {
@@ -181,7 +219,7 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
           _StatusAvatar(
             initials: c.initials,
             colorValue: c.colorValue,
-            viewed: false,
+            viewed: c.items.where((i) => !i.isExpired).every((i) => status.isViewed(i.id)),
             label: c.name,
             onTap: () => Get.to(() => StatusViewerScreen(
                   name: c.name,
@@ -223,6 +261,116 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
     );
   }
 
+  void _showConversationOptions(BuildContext context, Conversation conv) {
+    final currentUserId = Get.find<AuthService>().currentUser.value?.id ?? '';
+    final myP = conv.participants.firstWhereOrNull((p) => p.userId == currentUserId);
+    final isMuted = myP?.muted ?? false;
+    final ms = Get.find<MessagingService>();
+
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Row(
+                  children: [
+                    Text(
+                      FormatUtils.sanitize(conv.getTitle(currentUserId)),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(),
+              Obx(() {
+                final isPinned = ms.isPinned(conv.id);
+                return ListTile(
+                  leading: Icon(
+                    isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                    color: isPinned ? Theme.of(context).colorScheme.primary : null,
+                  ),
+                  title: Text(isPinned ? 'Désépingler la discussion' : 'Épingler la discussion'),
+                  subtitle: Text(
+                    isPinned ? 'Retirer du haut de la liste' : 'Conserver en tête de liste (max 3)',
+                    style: TextStyle(fontSize: 11.5, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                  onTap: () async {
+                    Get.back();
+                    final already = ms.isPinned(conv.id);
+                    final ok = await ms.togglePinConversation(conv.id);
+                    if (!ok && !already) {
+                      Get.snackbar('Épinglage', 'Maximum 3 discussions épinglées',
+                          snackPosition: SnackPosition.BOTTOM);
+                    } else {
+                      Get.snackbar('Épinglage', already ? 'Discussion désépinglée' : 'Discussion épinglée en haut',
+                          snackPosition: SnackPosition.BOTTOM, duration: const Duration(seconds: 2));
+                    }
+                  },
+                );
+              }),
+              ListTile(
+                leading: Icon(isMuted ? Icons.notifications_active_outlined : Icons.notifications_off_outlined),
+                title: Text(isMuted ? 'Rétablir les notifications' : 'Mettre en sourdine'),
+                onTap: () async {
+                  Get.back();
+                  await ms.toggleMuteConversation(conv.id, !isMuted);
+                  Get.snackbar('Notifications', !isMuted ? 'Conversation mise en sourdine' : 'Notifications rétablies', snackPosition: SnackPosition.BOTTOM);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.orange),
+                title: const Text('Effacer la discussion'),
+                onTap: () async {
+                  Get.back();
+                  final ok = await Get.dialog<bool>(AlertDialog(
+                    title: const Text('Effacer la discussion ?'),
+                    content: const Text('Supprimer les messages pour vous sur cet appareil ?'),
+                    actions: [
+                      TextButton(onPressed: () => Get.back(result: false), child: const Text('Annuler')),
+                      TextButton(onPressed: () => Get.back(result: true), child: const Text('Effacer', style: TextStyle(color: Colors.red))),
+                    ],
+                  ));
+                  if (ok == true) {
+                    await ms.clearConversationForMe(conv.id);
+                    Get.snackbar('Discussion effacée', 'Messages effacés', snackPosition: SnackPosition.BOTTOM);
+                  }
+                },
+              ),
+              if (conv.isGroup)
+                ListTile(
+                  leading: const Icon(Icons.exit_to_app, color: Colors.red),
+                  title: const Text('Quitter le groupe', style: TextStyle(color: Colors.red)),
+                  onTap: () async {
+                    Get.back();
+                    final ok = await Get.dialog<bool>(AlertDialog(
+                      title: const Text('Quitter le groupe ?'),
+                      content: Text('Voulez-vous quitter "${conv.getTitle(currentUserId)}" ?'),
+                      actions: [
+                        TextButton(onPressed: () => Get.back(result: false), child: const Text('Annuler')),
+                        TextButton(onPressed: () => Get.back(result: true), child: const Text('Quitter', style: TextStyle(color: Colors.red))),
+                      ],
+                    ));
+                    if (ok == true) {
+                      await ms.leaveGroup(conv.id);
+                      Get.snackbar('Groupe', 'Vous avez quitté le groupe', snackPosition: SnackPosition.BOTTOM);
+                    }
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildConversationTile(BuildContext context, Conversation conv) {
     final cs = Theme.of(context).colorScheme;
     final currentUserId = Get.find<AuthService>().currentUser.value?.id ?? '';
@@ -230,6 +378,9 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
       (p) => p.userId != currentUserId,
       orElse: () => conv.participants.first,
     );
+    final myP = conv.participants.firstWhereOrNull((p) => p.userId == currentUserId);
+    final isMuted = myP?.muted ?? false;
+
     // Calcul du nombre de non-lus (WhatsApp-like)
     final unreadCount = (() {
       final ms = Get.find<MessagingService>();
@@ -244,38 +395,53 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
 
     return InkWell(
       onTap: () => Get.to(() => ChatScreen(conversation: conv)),
+      onLongPress: () => _showConversationOptions(context, conv),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Row(
           children: [
-            // Avatar : photo si disponible, sinon initiales (Meta/WeChat style avec fallback erreur)
+            // Avatar : photo si disponible, ou icône groupe / initiales
             Container(
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: cs.primary,
+                color: conv.isGroup ? ChatMeColors.violet : cs.primary,
                 borderRadius: BorderRadius.circular(14),
               ),
               clipBehavior: Clip.antiAlias,
-              child: (other.profile?.avatarUrl != null && other.profile!.avatarUrl!.isNotEmpty)
-                  ? Image.network(
-                      other.profile!.avatarUrl!,
-                      fit: BoxFit.cover,
-                      width: 48,
-                      height: 48,
-                      errorBuilder: (_, __, ___) => Center(
-                        child: Text(
-                          other.profile?.initials ?? '?',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              child: conv.isGroup
+                  ? (conv.avatarUrl != null && conv.avatarUrl!.isNotEmpty
+                      ? Image.network(
+                          conv.avatarUrl!,
+                          fit: BoxFit.cover,
+                          width: 48,
+                          height: 48,
+                          errorBuilder: (_, __, ___) => const Center(
+                            child: Icon(Icons.groups, color: Colors.white, size: 24),
+                          ),
+                        )
+                      : const Center(
+                          child: Icon(Icons.groups, color: Colors.white, size: 24),
+                        ))
+                  : (other.profile?.avatarUrl != null && other.profile!.avatarUrl!.isNotEmpty)
+                      ? Image.network(
+                          other.profile!.avatarUrl!,
+                          fit: BoxFit.cover,
+                          width: 48,
+                          height: 48,
+                          errorBuilder: (_, __, ___) => Center(
+                            child: Text(
+                              other.profile?.initials ?? '?',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        )
+                      : Center(
+                          child: Text(
+                            other.profile?.initials ?? '?',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                          ),
                         ),
-                      ),
-                    )
-                  : Center(
-                      child: Text(
-                        other.profile?.initials ?? '?',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                      ),
-                    ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -290,9 +456,18 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
                             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: cs.onSurface),
                             overflow: TextOverflow.ellipsis),
                       ),
-                      if (conv.lastMessage != null)
-                        Text(conv.lastMessage!.timeAgo,
-                            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isMuted) ...[
+                            Icon(Icons.volume_off, size: 14, color: cs.onSurfaceVariant),
+                            const SizedBox(width: 4),
+                          ],
+                          if (conv.lastMessage != null)
+                            Text(conv.lastMessage!.timeAgo,
+                                style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                        ],
+                      ),
                     ],
                   ),
                   const SizedBox(height: 2),
@@ -306,8 +481,13 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
                     }
                     return Row(
                       children: [
-                        if (conv.lastMessage != null && conv.lastMessage!.senderId == currentUserId)
-                          Text('Vous: ', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+                        if (conv.lastMessage != null) ...[
+                          if (conv.lastMessage!.senderId == currentUserId)
+                            Text('Vous: ', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))
+                          else if (conv.isGroup && conv.lastMessage!.sender?.displayName != null)
+                            Text('${conv.lastMessage!.sender!.displayName!.split(' ').first}: ',
+                                style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant, fontWeight: FontWeight.w500)),
+                        ],
                         Expanded(
                           child: Text(
                             FormatUtils.sanitize(conv.lastMessage?.displayContent ?? 'Démarrez la conversation'),
@@ -322,6 +502,18 @@ class _DiscussionsScreenState extends State<DiscussionsScreen> {
                 ],
               ),
             ),
+            Obx(() {
+              final ms = Get.find<MessagingService>();
+              final pinned = ms.isPinned(conv.id);
+              if (!pinned) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: Transform.rotate(
+                  angle: 0.5,
+                  child: Icon(Icons.push_pin, size: 15, color: cs.primary),
+                ),
+              );
+            }),
             if (isUnread)
               Obx(() {
                 final liveCount = (() {

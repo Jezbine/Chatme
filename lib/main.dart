@@ -69,6 +69,7 @@ void main() async {
     Get.find<ContactsService>().init(),
     Get.find<StatusService>().init(),
     Get.find<LockService>().init(),
+    Get.find<CallService>().init(),
   ]);
 
   // Tâche non critique reportée après le premier frame
@@ -161,6 +162,21 @@ void _handleDeepLink(Uri uri) {
     } else if (uri.queryParameters.containsKey('code')) {
       // PKCE code flow
       Get.offAll(() => const HomeScreen());
+    }
+    return;
+  }
+
+  // Redirection retour après paiement FedaPay
+  final isPaymentCallback = uri.path.contains('/callback') ||
+      uri.host == 'payment-callback' ||
+      (uri.queryParameters.containsKey('id') && uri.queryParameters.containsKey('status'));
+
+  if (isPaymentCallback) {
+    final status = uri.queryParameters['status'];
+    final txId = uri.queryParameters['id'];
+    if (kDebugMode) print('[DeepLink] Payment callback - id: $txId, status: $status');
+    if (Get.isRegistered<WalletService>()) {
+      WalletService.to.refreshBalance();
     }
   }
 }

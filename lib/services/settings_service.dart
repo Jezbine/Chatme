@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Combine les réglages typiques de WhatsApp, Instagram, WeChat et Facebook.
 class SettingsService extends GetxService {
   static SettingsService get to => Get.find();
+
+  static const _secureStorage = FlutterSecureStorage();
 
   // ---- Confidentialité & Sécurité ----
   final RxString lastSeen = 'contacts'.obs; // everyone | contacts | nobody
@@ -59,7 +62,17 @@ class SettingsService extends GetxService {
     typingIndicator.value = prefs.getBool('s_typingIndicator') ?? true;
     activityStatus.value = prefs.getBool('s_activityStatus') ?? true;
     twoStepVerification.value = prefs.getBool('s_twoStep') ?? false;
-    twoStepPin.value = prefs.getString('s_twoStepPin') ?? '';
+    // 2FA PIN : stockage sécurisé (Keystore/Keychain), avec fallback SharedPrefs pour migration
+    final securePin = await _secureStorage.read(key: 's_twoStepPin');
+    if (securePin != null) {
+      twoStepPin.value = securePin;
+    } else {
+      twoStepPin.value = prefs.getString('s_twoStepPin') ?? '';
+      if (twoStepPin.value.isNotEmpty) {
+        await _secureStorage.write(key: 's_twoStepPin', value: twoStepPin.value);
+        await prefs.remove('s_twoStepPin');
+      }
+    }
     loginAlerts.value = prefs.getBool('s_loginAlerts') ?? true;
     faceTagging.value = prefs.getBool('s_faceTagging') ?? false;
     momentsVisibility.value = prefs.getString('s_momentsVisibility') ?? 'contacts';
@@ -95,7 +108,8 @@ class SettingsService extends GetxService {
     await prefs.setBool('s_typingIndicator', typingIndicator.value);
     await prefs.setBool('s_activityStatus', activityStatus.value);
     await prefs.setBool('s_twoStep', twoStepVerification.value);
-    await prefs.setString('s_twoStepPin', twoStepPin.value);
+    // 2FA PIN → stockage sécurisé uniquement (jamais en SharedPrefs en clair)
+    await _secureStorage.write(key: 's_twoStepPin', value: twoStepPin.value);
     await prefs.setBool('s_loginAlerts', loginAlerts.value);
     await prefs.setBool('s_faceTagging', faceTagging.value);
     await prefs.setString('s_momentsVisibility', momentsVisibility.value);

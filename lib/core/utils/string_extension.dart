@@ -1,8 +1,13 @@
+import 'package:characters/characters.dart';
+
 /// Extensions pour les chaînes de caractères
 extension StringExtension on String {
   /// Mise en majuscule du premier caractère
-  String get capitalize =>
-      isEmpty ? this : '${this[0].toUpperCase()}${substring(1).toLowerCase()}';
+  String get capitalize {
+    if (isEmpty) return this;
+    final first = characters.first;
+    return '${first.toUpperCase()}${characters.skip(1).string.toLowerCase()}';
+  }
 
   /// Mise en majuscule de chaque mot
   String get titleCase => split(' ').map((word) => word.capitalize).join(' ');
@@ -35,13 +40,27 @@ extension StringExtension on String {
     return this;
   }
 
-  /// Convertir en initiales (ex: "Jean Pierre" -> "JP")
+  /// Convertir en initiales (ex: "Jean Pierre" → "JP") — safe avec emojis.
   String get initials {
-    final parts = split(' ').where((p) => p.isNotEmpty).toList();
-    if (parts.length >= 2) {
-      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    // Supprimer emojis/symboles en tête de chaque mot
+    String safeFirst(String s) {
+      for (final char in s.characters) {
+        if (RegExp(r'[\p{L}\p{N}]', unicode: true).hasMatch(char)) return char;
+      }
+      return '';
     }
-    if (isNotEmpty) return this[0].toUpperCase();
+    final cleaned = replaceAll(RegExp(r'^[^\p{L}\p{N}]+', unicode: true), '').trim();
+    final source = cleaned.isNotEmpty ? cleaned : this;
+    final parts = source.split(' ').where((p) => p.isNotEmpty).toList();
+    if (parts.length >= 2) {
+      final a = safeFirst(parts[0]);
+      final b = safeFirst(parts[1]);
+      if (a.isNotEmpty && b.isNotEmpty) return (a + b).toUpperCase();
+    }
+    if (source.isNotEmpty) {
+      final first = safeFirst(source);
+      if (first.isNotEmpty) return first.toUpperCase();
+    }
     return '?';
   }
 

@@ -1,24 +1,32 @@
 /// Validateurs réutilisables à travers l'application
 class AppValidators {
   /// Validation pour numéro téléphone Bénin (+229)
-  /// Numéros béninois : 10 chiffres, ne commençant pas par 01
+  /// Plan national de numérotation à 10 chiffres (préfixe 01 pour les mobiles : MTN, Moov, Celtiis)
   static String? validateBeninPhone(String? value) {
     if (value == null || value.isEmpty) return null;
     final digits = value.replaceAll(RegExp(r'[^\d]'), '');
 
-    if (digits.startsWith('229')) {
-      final local = digits.substring(3);
-      if (local.length != 10) return '10 chiffres requis après +229';
-      if (local.startsWith('01')) return 'Numéro invalide';
+    String local = digits;
+    if (local.startsWith('00229')) {
+      local = local.substring(5);
+    } else if (local.startsWith('229')) {
+      local = local.substring(3);
+    }
+
+    // Format officiel 10 chiffres (commence par 01 pour mobile ou 02 pour fixe)
+    if (local.length == 10) {
+      if (!local.startsWith('01') && !local.startsWith('02')) {
+        return 'Un numéro mobile béninois à 10 chiffres commence par 01';
+      }
       return null;
     }
 
-    if (digits.length == 10) {
-      if (digits.startsWith('01')) return 'Numéro invalide';
+    // Ancien format 8 chiffres (accepté et normalisé automatiquement avec 01)
+    if (local.length == 8) {
       return null;
     }
 
-    return '10 chiffres requis';
+    return '10 chiffres requis (ex: 01 97 00 00 00)';
   }
 
   /// Validation pour adresse email

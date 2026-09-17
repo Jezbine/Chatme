@@ -219,16 +219,43 @@ class _CallScreenState extends State<CallScreen> with WidgetsBindingObserver {
 
             // Call info overlay
             Positioned(
-              top: 50,
+              top: 40,
               left: 0,
               right: 0,
               child: Column(
                 children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF1B8A5A),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Text(
+                          'LiveKit Cloud HD',
+                          style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Text(
                     _callService.callStatus.value.isNotEmpty 
                         ? _callService.callStatus.value 
                         : (_connected ? 'En appel' : 'Connexion…'),
-                    style: const TextStyle(color: Colors.white70, fontSize: 14),
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
                   ),
                   const SizedBox(height: 4),
                   Text(

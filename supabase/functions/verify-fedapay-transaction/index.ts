@@ -6,8 +6,8 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const FEDA_API_KEY = Deno.env.get("FEDA_API_KEY") || Deno.env.get("FEDAPAY_SECRET_KEY") || "";
-const envConfig = (Deno.env.get("FEDA_ENV") ?? "").toLowerCase();
-const isLive = envConfig === "live" || FEDA_API_KEY.startsWith("sk_live_");
+const envConfig = (Deno.env.get("FEDA_ENV") ?? "live").toLowerCase();
+const isLive = envConfig !== "sandbox";
 const FEDA_BASE = isLive ? "https://api.fedapay.com/v1" : "https://sandbox-api.fedapay.com/v1";
 
 serve(async (req) => {

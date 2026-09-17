@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'otp_verification_screen.dart';
 import 'email_auth_screen.dart';
 import '../../services/auth_service.dart';
+import '../../core/utils/app_validators.dart';
 
 class PhoneInputScreen extends StatelessWidget {
   const PhoneInputScreen({super.key});
@@ -175,15 +176,12 @@ class PhoneInputScreen extends StatelessWidget {
                 keyboardType: TextInputType.phone,
                 decoration: const InputDecoration(
                   labelText: 'Numéro (+229)',
-                  hintText: 'XX XX XX XX XX',
+                  hintText: '01 XX XX XX XX',
                   prefixIcon: Icon(Icons.phone),
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) return 'Entrez votre numéro';
-                  final digits = value.replaceAll(RegExp(r'[^\d]'), '');
-                  if (digits.length < 10) return '10 chiffres requis';
-                  if (digits.startsWith('01')) return 'Numéro invalide';
-                  return null;
+                  return AppValidators.validateBeninPhone(value);
                 },
               ),
               const SizedBox(height: 16),

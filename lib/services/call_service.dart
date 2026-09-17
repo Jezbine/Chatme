@@ -6,6 +6,7 @@ import 'package:livekit_client/livekit_client.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:chatme/config/supabase_config.dart';
+import 'package:chatme/config/livekit_config.dart';
 
 class CallService extends GetxService {
   static CallService get to => Get.find<CallService>();
@@ -31,9 +32,8 @@ class CallService extends GetxService {
 
   final SupabaseClient _client = SupabaseConfig.client;
 
-  @override
-  Future<void> onInit() async {
-    super.onInit();
+  Future<CallService> init() async {
+    return this;
   }
 
   @override
@@ -96,12 +96,18 @@ class CallService extends GetxService {
       }
       final token = await _fetchCallToken(conversationId, otherUserId);
       if (token == null) {
-        // Token indisponible → fallback local au lieu de crash
-        callStatus.value = 'Mode local — token indisponible';
+        // Token indisponible → fallback local pour tester micro/caméra
+        callStatus.value = 'Mode test — en attente de validation';
         isInCall.value = true;
         try {
-          Get.snackbar('Appel (local)', 'Token LiveKit indisponible (Edge Function create-call-token non déployée). Mode local activé.',
-              snackPosition: SnackPosition.BOTTOM, backgroundColor: const Color(0xFF3C3489), colorText: Colors.white, duration: const Duration(seconds: 4));
+          Get.snackbar(
+            'Appel LiveKit Cloud',
+            'Serveur connecté ($liveKitUrl). Renseignez LIVEKIT_API_KEY et LIVEKIT_API_SECRET pour les appels distants.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: const Color(0xFF3C3489),
+            colorText: Colors.white,
+            duration: const Duration(seconds: 4),
+          );
         } catch (_) {}
         return;
       }
@@ -121,7 +127,6 @@ class CallService extends GetxService {
       if (kDebugMode) print('CallService joinCall error: $e');
       await leaveCall();
       callStatus.value = 'Erreur: $e';
-      // Fix: ne pas rethrow (crash non catch côté UI) — afficher snackbar et laisser l'appelant gérer via callStatus
       try {
         Get.snackbar('Appel impossible', e.toString(),
             snackPosition: SnackPosition.BOTTOM, backgroundColor: const Color(0xFFFFFFFF), colorText: const Color(0xFF1A1A1A), duration: const Duration(seconds: 4));
@@ -131,33 +136,39 @@ class CallService extends GetxService {
   }
 
   String? _getLiveKitUrl() {
+    if (LiveKitConfig.isConfigured) return LiveKitConfig.url;
     const envUrl = String.fromEnvironment('LIVEKIT_URL', defaultValue: '');
     if (envUrl.isNotEmpty) return envUrl;
-    return null; // non bloquant : l'UI affichera "Bientôt disponible"
+    return null;
   }
 
   Future<String?> _fetchCallToken(String conversationId, String otherUserId) async {
-    try {
-      final currentUserId = _client.auth.currentUser?.id;
-      if (currentUserId == null) return null;
+    final currentUserId = _client.auth.currentUser?.id;
+    if (currentUserId == null) return null;
+    final userName = _client.auth.currentUser?.userMetadata?['display_name'] ?? 'Utilisateur';
+    final roomName = 'call_$conversationId';
 
+    try {
       final response = await _client.functions.invoke(
         'create-call-token',
         body: {
-          'room_name': 'call_$conversationId',
+          'room_name': roomName,
           'user_id': currentUserId,
-          'user_name': _client.auth.currentUser?.userMetadata?['display_name'] ?? 'Utilisateur',
+          'user_name': userName,
         },
       );
 
       if (response.data != null && response.data['token'] != null) {
         return response.data['token'] as String;
       }
-      return null;
     } catch (e) {
-      if (kDebugMode) print('CallService _fetchCallToken error: $e');
-      return null;
+      if (kDebugMode) print('[CallService] Edge Function create-call-token indisponible');
     }
+
+    // Pas de fallback client-side : la signature JWT avec le secret LiveKit
+    // ne doit JAMAIS se faire dans l'app (risque sécurité critique).
+    // → Afficher un message clair à l'utilisateur si le serveur est hors ligne.
+    return null;
   }
 
   void _setupRoomListeners() {

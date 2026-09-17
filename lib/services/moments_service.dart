@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:chatme/core/utils/string_extension.dart';
 
 class MomentComment {
   final String author;
@@ -163,7 +164,7 @@ class MomentsService extends GetxService {
       for (final r in rows as List) {
         final m = r as Map<String, dynamic>;
         final display = (m['profiles']?['display_name'] as String?) ?? 'Contact';
-        final initials = display.isNotEmpty ? display.substring(0, display.length >= 2 ? 2 : 1).toUpperCase() : '?';
+        final initials = display.isNotEmpty ? display.initials : '?';
         final createdAt = DateTime.tryParse(m['created_at'].toString()) ?? DateTime.now();
         final timeAgo = _formatTimeAgo(createdAt);
         // Likes : compter via likes_count + vérifier si current user a liké
@@ -298,15 +299,12 @@ class MomentsService extends GetxService {
         final displayName = (profile?['display_name'] as String?) ?? user.userMetadata?['display_name'] as String? ?? 'Vous';
         resolvedName = resolvedName.isEmpty ? displayName : resolvedName;
         if (resolvedInitials.isEmpty) {
-          final parts = displayName.trim().split(RegExp(r'\s+'));
-          resolvedInitials = parts.length >= 2
-              ? (parts[0][0] + parts[1][0]).toUpperCase()
-              : displayName.substring(0, displayName.length >= 2 ? 2 : 1).toUpperCase();
+          resolvedInitials = displayName.trim().initials;
         }
       }
     } catch (_) {}
     if (resolvedName.isEmpty) resolvedName = 'Vous';
-    if (resolvedInitials.isEmpty) resolvedInitials = resolvedName.substring(0, 1).toUpperCase();
+    if (resolvedInitials.isEmpty) resolvedInitials = resolvedName.initials;
 
     String? remotePhoto = photoPath;
     if (photoPath != null && photoPath.isNotEmpty && !photoPath.startsWith('http')) {

@@ -1,3 +1,5 @@
+import 'package:characters/characters.dart';
+
 class UserProfile {
   final String id;
   final String phoneNumber;
@@ -92,21 +94,36 @@ class UserProfile {
       );
 
   String get initials {
-    final name = (displayName != null && displayName!.trim().isNotEmpty)
+    final raw = (displayName != null && displayName!.trim().isNotEmpty)
         ? displayName!.trim()
         : (phoneNumber.isNotEmpty
             ? phoneNumber.replaceAll('+', '').trim()
             : (email?.split('@').first ?? ''));
-    final parts = name.split(RegExp(r'\s+'));
-    if (parts.length >= 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
-      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    // Filtrer les caractères non-alphabétiques/numériques en tête (emojis, symboles)
+    final cleaned = raw.replaceAll(RegExp(r'^[^\p{L}\p{N}]+', unicode: true), '').trim();
+    final source = cleaned.isNotEmpty ? cleaned : raw;
+    final parts = source.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.length >= 2) {
+      final a = _safeFirstLetter(parts[0]);
+      final b = _safeFirstLetter(parts[1]);
+      if (a.isNotEmpty && b.isNotEmpty) return (a + b).toUpperCase();
     }
-    if (name.isNotEmpty) {
-      return name.length >= 2
-          ? name.substring(0, 2).toUpperCase()
-          : name[0].toUpperCase();
+    if (source.isNotEmpty) {
+      final first = _safeFirstLetter(source);
+      if (first.isNotEmpty) {
+        final second = source.length > 1 ? _safeFirstLetter(source.substring(first.length)) : '';
+        return (first + second).toUpperCase();
+      }
     }
     return '?';
+  }
+
+  /// Retourne le premier caractère lettre/chiffre d'une chaîne (safe avec emojis).
+  static String _safeFirstLetter(String s) {
+    for (final char in s.characters) {
+      if (RegExp(r'[\p{L}\p{N}]', unicode: true).hasMatch(char)) return char;
+    }
+    return '';
   }
 
   String get displayNameOrPhone =>

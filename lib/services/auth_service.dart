@@ -858,25 +858,34 @@ class AuthService extends GetxService with WidgetsBindingObserver {
     }
   }
 
-  /// **Normalisation téléphone Benin**
-  /// Numéros béninois : 10 chiffres, ne commençant pas par 01
+  /// **Normalisation téléphone Bénin (Plan officiel à 10 chiffres)**
+  /// Préfixe 01 pour les mobiles (MTN, Moov, Celtiis) et indicatif +229
   String _normalizePhone(String phone) {
     String cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
 
     if (cleaned.startsWith('+')) {
+      if (cleaned.startsWith('+229')) {
+        String local = cleaned.substring(4);
+        if (local.length == 8) local = '01$local';
+        return '+229$local';
+      }
       return cleaned;
     }
 
-    if (cleaned.startsWith('00')) {
-      return '+${cleaned.substring(2)}';
+    if (cleaned.startsWith('00229')) {
+      String local = cleaned.substring(5);
+      if (local.length == 8) local = '01$local';
+      return '+229$local';
     }
 
-    if (cleaned.length == 10 && !cleaned.startsWith('01')) {
-      return '+229$cleaned';
+    if (cleaned.startsWith('229')) {
+      String local = cleaned.substring(3);
+      if (local.length == 8) local = '01$local';
+      return '+229$local';
     }
 
     if (cleaned.length == 8) {
-      return '+229$cleaned';
+      cleaned = '01$cleaned';
     }
 
     return '+229$cleaned';
