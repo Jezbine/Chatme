@@ -37,23 +37,28 @@ jobs:
           # Prepare Flutter iOS build environment and assets
           flutter build ios --config-only --release --no-codesign 2>&1 | tee -a build_ios.log
 
-          # Compile unsigned iOS release binary with xcodebuild
+          # Compile unsigned iOS release binary with xcodebuild using absolute paths
           xcodebuild build \
             -workspace ios/Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -sdk iphoneos \
+            -derivedDataPath "$PWD/build/ios_derived" \
+            SYMROOT="$PWD/build/ios_build" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
-            BUILD_DIR=build/ios \
             2>&1 | tee -a build_ios.log
 
           # Package into .ipa
           mkdir -p build/ios/ipa/Payload
-          APP_PATH=$(find build/ios -name "Runner.app" -type d | head -n 1)
+          APP_PATH=$(find "$PWD/build/ios_build" -name "Runner.app" -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Searching all build dirs for Runner.app..."
+            APP_PATH=$(find "$PWD/build" -name "Runner.app" -type d | head -n 1)
+          fi
           if [ -z "$APP_PATH" ]; then
             echo "Error: Runner.app not found!"
             exit 1
