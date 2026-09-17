@@ -139,3 +139,39 @@ jobs:
           git add -f build_android.log
           git commit -m "ci: debug Android build log" || true
           git push -f origin debug-android-log || true
+
+  publish-release:
+    name: Publish Public Release Binaries
+    needs: [build-ios, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Create working directory
+        run: mkdir -p release-files
+
+      - name: Download iOS IPA Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ChatMe-iOS-IPA
+          path: release-files/
+
+      - name: Download Android APK Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ChatMe-Android-APK
+          path: release-files/
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: "ChatMe v1.0.0 (Release APK & iOS IPA)"
+          body: |
+            ## ChatMe Super App - Téléchargements Directs
+            - **iOS (.ipa)** : `ChatMe.ipa` (prêt pour Sideloadly / AltStore / Scarlet / TestFlight)
+            - **Android (.apk)** : `app-release.apk` (installable sur tout smartphone Android)
+          files: |
+            release-files/ChatMe.ipa
+            release-files/app-release.apk
