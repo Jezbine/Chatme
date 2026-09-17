@@ -1,14 +1,75 @@
-name: Build iOS IPA
+name: Build ChatMe (iOS IPA & Android APK)
 
 on:
-  workflow_dispatch: # Permet de lancer la compilation manuellement en 1 clic
+  workflow_dispatch:
   push:
     branches: [ main, master ]
 
 jobs:
   build-ios:
     name: Build iOS (.ipa)
-    runs-on: macos-latest
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Precache iOS Artifacts
+        run: flutter precache --ios
+
+      - name: Install Flutter Dependencies
+        run: flutter pub get
+
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install --repo-update
+          cd ..
+
+      - name: Build iOS App (.ipa)
+        run: |
+          set -o pipefail
+          flutter build ios --release --no-codesign 2>&1 | tee ios_build.log
+          mkdir -p build/ios/ipa/Payload
+          cp -r build/ios/iphoneos/Runner.app build/ios/ipa/Payload/
+          cd build/ios/ipa
+          zip -r -q ChatMe.ipa Payload
+          echo "### iOS IPA Build Successful! :iphone: :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+          echo "The .ipa file has been compiled and is available in Artifacts." >> $GITHUB_STEP_SUMMARY
+
+      - name: Report Error on Failure
+        if: failure()
+        run: |
+          echo "### iOS Build Failed :x:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -n 80 ios_build.log >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload IPA Artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChatMe-iOS-IPA
+          path: build/ios/ipa/ChatMe.ipa
+          retention-days: 14
+
+      - name: Upload Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-Build-Log
+          path: ios_build.log
+          retention-days: 7
+
+  build-android:
+    name: Build Android (.apk)
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -26,21 +87,21 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Install dependencies
+      - name: Precache Android Artifacts
+        run: flutter precache --android
+
+      - name: Install Dependencies
         run: flutter pub get
 
-      - name: Build iOS App (.ipa)
+      - name: Build Android APK
         run: |
-          flutter build ios --release --no-codesign
-          mkdir -p build/ios/ipa/Payload
-          cp -r build/ios/iphoneos/Runner.app build/ios/ipa/Payload/
-          cd build/ios/ipa
-          zip -r ChatMe.ipa Payload
+          flutter build apk --release
+          echo "### Android APK Build Successful! :robot: :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+          echo "The .apk file is ready for download in Artifacts." >> $GITHUB_STEP_SUMMARY
 
-      - name: Upload IPA Artifact
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ChatMe-iOS-IPA
-          path: build/ios/ipa/ChatMe.ipa
+          name: ChatMe-Android-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 14
-
