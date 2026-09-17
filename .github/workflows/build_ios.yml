@@ -8,7 +8,7 @@ on:
 jobs:
   build-ios:
     name: Build iOS (.ipa)
-    runs-on: macos-14
+    runs-on: macos-latest
 
     steps:
       - name: Checkout repository
@@ -18,36 +18,38 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          cache: true
-
-      - name: Precache iOS Artifacts
-        run: flutter precache --ios
+          cache: false
 
       - name: Install Flutter Dependencies
-        run: flutter pub get
+        run: |
+          touch build_ios.log
+          flutter pub get 2>&1 | tee -a build_ios.log || {
+            echo "### Flutter pub get failed :x:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 60 build_ios.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
 
       - name: Build iOS App (.ipa)
         run: |
           set -o pipefail
-          touch ios_build.log
           cd ios
           pod install --repo-update || pod install || true
           cd ..
-          flutter build ios --release --no-codesign 2>&1 | tee ios_build.log
+          flutter build ios --release --no-codesign 2>&1 | tee -a build_ios.log || {
+            echo "### iOS Build Failed :x:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 80 build_ios.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
           mkdir -p build/ios/ipa/Payload
           cp -r build/ios/iphoneos/Runner.app build/ios/ipa/Payload/
           cd build/ios/ipa
           zip -r -q ChatMe.ipa Payload
           echo "### iOS IPA Build Successful! :iphone: :white_check_mark:" >> $GITHUB_STEP_SUMMARY
           echo "The .ipa file has been compiled and is available in Artifacts." >> $GITHUB_STEP_SUMMARY
-
-      - name: Report Error on Failure
-        if: failure()
-        run: |
-          echo "### iOS Build Failed :x:" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -n 80 ios_build.log >> $GITHUB_STEP_SUMMARY || true
-          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload IPA Artifact
         if: success()
@@ -57,12 +59,12 @@ jobs:
           path: build/ios/ipa/ChatMe.ipa
           retention-days: 14
 
-      - name: Upload Logs on Failure
-        if: failure()
+      - name: Upload Logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: iOS-Build-Log
-          path: ios_build.log
+          path: build_ios.log
           retention-days: 7
 
   build-android:
