@@ -33,13 +33,37 @@ jobs:
           cd ios
           pod install --repo-update || pod install || true
           cd ..
-          flutter build ios --release --no-codesign 2>&1 | tee build_ios.log
+
+          # Prepare Flutter iOS build environment and assets
+          flutter build ios --config-only --release --no-codesign 2>&1 | tee -a build_ios.log
+
+          # Compile unsigned iOS release binary with xcodebuild
+          xcodebuild build \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            BUILD_DIR=build/ios \
+            2>&1 | tee -a build_ios.log
+
+          # Package into .ipa
           mkdir -p build/ios/ipa/Payload
-          cp -r build/ios/iphoneos/Runner.app build/ios/ipa/Payload/
+          APP_PATH=$(find build/ios -name "Runner.app" -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Error: Runner.app not found!"
+            exit 1
+          fi
+          echo "Packaging $APP_PATH into ChatMe.ipa"
+          cp -r "$APP_PATH" build/ios/ipa/Payload/
           cd build/ios/ipa
           zip -r -q ChatMe.ipa Payload
           echo "### iOS IPA Build Successful! :iphone: :white_check_mark:" >> $GITHUB_STEP_SUMMARY
-          echo "The .ipa file has been compiled and is available in Artifacts." >> $GITHUB_STEP_SUMMARY
+          echo "The .ipa file has been compiled and is ready for download in Artifacts." >> $GITHUB_STEP_SUMMARY
 
       - name: Upload IPA Artifact
         if: success()
@@ -49,7 +73,7 @@ jobs:
           path: build/ios/ipa/ChatMe.ipa
           retention-days: 14
 
-      - name: Save Debug Logs to Branch on Failure
+      - name: Save Debug Logs on Failure
         if: failure()
         run: |
           git config --global user.name "github-actions[bot]"
@@ -101,7 +125,7 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 14
 
-      - name: Save Debug Logs to Branch on Failure
+      - name: Save Debug Logs on Failure
         if: failure()
         run: |
           git config --global user.name "github-actions[bot]"

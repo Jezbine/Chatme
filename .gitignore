@@ -88,7 +88,6 @@ app.*.map.json
 .env.local
 .env.production
 *.env
-lib/firebase_options.dart
 
 # FedaPay / LiveKit secrets - ne jamais commit
 .dart-define
